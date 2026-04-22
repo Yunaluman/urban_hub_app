@@ -1,0 +1,356 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Climatologie{% endblock %}
+{% block nav_climate %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kpi-mini { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:.75rem 1rem; }
+  .kpi-mini .kpi-val { font-size:1.4rem; font-weight:700; color:#f0f6fc; line-height:1.1; }
+  .kpi-mini .kpi-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:.2rem; }
+  .kpi-mini .kpi-sub { font-size:.68rem; color:#484f58; margin-top:.15rem; }
+  .loading-overlay { display:flex; align-items:center; justify-content:center; height:100%; min-height:220px; }
+  .btn-apply { min-width:90px; }
+  .chart-placeholder { min-height:280px; }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#238636; margin-right:.35rem; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .filter-bar { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HEADER -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">
+      <i class="bi bi-cloud-sun-fill text-info me-2"></i>Climatologie &amp; risques
+    </h4>
+    <small class="text-secondary">Températures, saisonnalité, événements extrêmes</small>
+  </div>
+  {% if last_update %}
+  <small class="text-secondary">
+    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+  </small>
+  {% endif %}
+</div>
+
+<!-- KPI CARDS (server-side) -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-broadcast me-1"></i>Stations météo</div>
+      <div class="kpi-val">{{ station_count|default:"—" }}</div>
+      <div class="kpi-sub">points de mesure</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Observations</div>
+      <div class="kpi-val">{{ observation_count|default:"—" }}</div>
+      <div class="kpi-sub">enregistrements en base</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-thermometer-high text-danger me-1"></i>Jours canicule</div>
+      <div class="kpi-val">{{ preload_hot_days|default:"—" }}</div>
+      <div class="kpi-sub">&gt; 35 °C (base entière)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-thermometer-low text-info me-1"></i>Jours grand froid</div>
+      <div class="kpi-val">{{ preload_cold_days|default:"—" }}</div>
+      <div class="kpi-sub">&lt; -5 °C (base entière)</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small text-secondary mb-1">Ville</label>
+      <select id="climate_city" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="">Chargement…</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small text-secondary mb-1">Début</label>
+      <input type="date" id="climate_start" class="form-control form-control-sm bg-dark text-light border-secondary" />
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small text-secondary mb-1">Fin</label>
+      <input type="date" id="climate_end" class="form-control form-control-sm bg-dark text-light border-secondary" />
+    </div>
+    <div class="col-md-2">
+      <button id="btn_apply" class="btn btn-sm btn-success btn-apply w-100">
+        <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TEMPERATURE CHART -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-thermometer-half me-1 text-warning"></i>Évolution de la température</div>
+    <small class="text-secondary" id="lbl_city_temp"></small>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Min / Moyenne / Max journaliers sur la période sélectionnée</div>
+  <div id="chart_temp" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- SEASONAL CHART -->
+<div class="chart-panel mb-3">
+  <div class="chart-title"><i class="bi bi-calendar3 me-1 text-info"></i>Profil saisonnier (toutes villes)</div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Température moyenne par mois sur l'historique complet, par ville</div>
+  <div id="chart_seasonal" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- EXTREMES CHART -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Jours extrêmes (canicule / grand froid)</div>
+    <small class="text-secondary" id="lbl_city_ext"></small>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Observations dépassant les seuils ±2.5σ sur la ville sélectionnée</div>
+  <div id="chart_extremes" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- VISIBILITY CHART -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-eye me-1 text-secondary"></i>Visibilité vs Température</div>
+    <small class="text-secondary" id="lbl_city_vis"></small>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Scatter — couleur = vitesse du vent (m/s). Corrélation locale entre température et visibilité.</div>
+  <div id="chart_vis" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ preload_seasonal|json_script:"preload-seasonal" }}
+{{ preload_temp_series|json_script:"preload-temp-series" }}
+<script>
+"use strict";
+
+let _initialLoadDone = false;
+
+function _preload(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch { return null; }
+}
+
+const LAYOUT = {
+  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  font:{ color:'#8b949e', size:11 },
+  margin:{ l:48, r:18, t:22, b:48 },
+  xaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+  yaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+};
+const CFG = { responsive:true, displayModeBar:false };
+
+function spinner(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>';
+}
+
+function showErr(id, msg, retryFn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<div class="loading-overlay flex-column gap-2 text-center">
+    <i class="bi bi-exclamation-circle text-danger fs-4"></i>
+    <small class="text-secondary">${msg}</small>
+    ${retryFn ? `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="(${retryFn.toString()})()"><i class="bi bi-arrow-clockwise me-1"></i>Réessayer</button>` : ''}
+  </div>`;
+}
+
+function noData(id, msg = 'Aucune donnée disponible') {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="loading-overlay text-secondary"><small><i class="bi bi-info-circle me-1"></i>${msg}</small></div>`;
+}
+
+async function loadCities() {
+  try {
+    const r = await fetch('/api/dashboard/cities/');
+    const d = await r.json();
+    const sel = document.getElementById('climate_city');
+    sel.innerHTML = '';
+    (d.cities || ['Paris']).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c === '__all__' ? 'Toutes les villes (France)' : c;
+      sel.appendChild(o);
+    });
+  } catch { /* keep default */ }
+}
+
+function getParams() {
+  return {
+    city: document.getElementById('climate_city').value || 'Paris',
+    start: document.getElementById('climate_start').value,
+    end: document.getElementById('climate_end').value,
+  };
+}
+
+function cityLabel(city) {
+  return city === '__all__' ? 'France (agrégat national)' : city;
+}
+
+async function drawTemp() {
+  const { city, start, end } = getParams();
+  const cityParam = city === '__all__' ? '__all__' : city;
+  spinner('chart_temp');
+  document.getElementById('lbl_city_temp').textContent = cityLabel(city);
+  try {
+    let s;
+    const preloaded = !_initialLoadDone && _preload('preload-temp-series');
+    if (preloaded && preloaded.length) {
+      s = preloaded;
+    } else {
+      const url = `/api/dashboard/climate/temperature/?city=${encodeURIComponent(cityParam)}&start=${start}&end=${end}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      s = d.series || [];
+    }
+    if (!s.length) { noData('chart_temp', 'Pas de données température pour cette période.'); return; }
+    const x = s.map(r => r.date);
+    const el = document.getElementById('chart_temp');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_temp', [
+      { x, y: s.map(r => r.temp_max), name:'Max', line:{ color:'#ef4444', width:1 }, type:'scatter', mode:'lines' },
+      { x, y: s.map(r => r.temp_avg), name:'Moyenne', line:{ color:'#f97316', width:2 }, fill:'tonexty', fillcolor:'rgba(249,115,22,0.12)', type:'scatter', mode:'lines' },
+      { x, y: s.map(r => r.temp_min), name:'Min', line:{ color:'#58a6ff', width:1 }, type:'scatter', mode:'lines' },
+    ], { ...LAYOUT, yaxis:{ ...LAYOUT.yaxis, title:'°C' }, legend:{ orientation:'h', y:1.12, font:{ color:'#8b949e' } } }, CFG);
+  } catch (e) {
+    showErr('chart_temp', 'Impossible de charger les données température.', drawTemp);
+  }
+}
+
+async function drawSeasonal() {
+  spinner('chart_seasonal');
+  const city = document.getElementById('climate_city').value || 'Paris';
+  try {
+    const preloaded = _preload('preload-seasonal');
+    let rows;
+    const usePreload = preloaded && preloaded.length && city === 'Paris';
+    if (usePreload) {
+      rows = preloaded;
+    } else {
+      const r = await fetch(`/api/dashboard/climate/seasonal/?city=${encodeURIComponent(city)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      rows = d.seasonal || [];
+    }
+    if (!rows.length) { noData('chart_seasonal', 'Pas de données saisonnières.'); return; }
+    const COLORS = ['#58a6ff','#3fb950','#f97316','#bc8cff','#ff7b72','#ffa657','#79c0ff'];
+    const byCity = {};
+    rows.forEach(row => {
+      if (!byCity[row.city]) byCity[row.city] = { x:[], y:[] };
+      byCity[row.city].x.push(row.month);
+      byCity[row.city].y.push(row.temp_avg);
+    });
+    const traces = Object.keys(byCity).map((city, i) => ({
+      x: byCity[city].x, y: byCity[city].y, name: city, type:'scatter', mode:'lines+markers',
+      line:{ width:2, color: COLORS[i % COLORS.length] },
+      marker:{ size:5, color: COLORS[i % COLORS.length] },
+    }));
+    const el = document.getElementById('chart_seasonal');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_seasonal', traces, { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Mois' }, yaxis:{ ...LAYOUT.yaxis, title:'°C' }, showlegend:true, legend:{ font:{ color:'#8b949e', size:10 }, orientation:'h', y:-0.18 } }, CFG);
+  } catch (e) {
+    showErr('chart_seasonal', 'Impossible de charger les données saisonnières.', drawSeasonal);
+  }
+}
+
+async function drawExtremes() {
+  const { city } = getParams();
+  const cityParam = city === '__all__' ? '__all__' : city;
+  spinner('chart_extremes');
+  document.getElementById('lbl_city_ext').textContent = cityLabel(city);
+  try {
+    const r = await fetch(`/api/dashboard/climate/extremes/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const s = d.extremes || [];
+    if (!s.length) { noData('chart_extremes', `Aucun jour extrême détecté pour ${city}.`); return; }
+    const colorMap = { 'Canicule':'#ef4444', 'Grand froid':'#58a6ff' };
+    const el = document.getElementById('chart_extremes');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_extremes', [{
+      x: s.map(r => r.date), y: s.map(r => r.temp), mode:'markers', type:'scatter',
+      marker:{ size:9, color: s.map(r => colorMap[r.type] || '#8b949e'), opacity:.85, line:{ width:1, color:'rgba(0,0,0,0.3)' } },
+      text: s.map(r => `${r.type} — ${r.date}`),
+      hovertemplate:'<b>%{text}</b><br>%{y:.1f} °C<extra></extra>',
+    }], {
+      ...LAYOUT, yaxis:{ ...LAYOUT.yaxis, title:'Température (°C)' },
+      annotations:[
+        { text:'■ Canicule', x:1.02, y:0.9, xref:'paper', yref:'paper', showarrow:false, font:{ color:'#ef4444', size:10 } },
+        { text:'■ Grand froid', x:1.02, y:0.8, xref:'paper', yref:'paper', showarrow:false, font:{ color:'#58a6ff', size:10 } },
+      ],
+      margin:{ ...LAYOUT.margin, r:90 },
+    }, CFG);
+  } catch (e) {
+    showErr('chart_extremes', 'Impossible de charger les données extrêmes.', drawExtremes);
+  }
+}
+
+async function drawVis() {
+  const { city } = getParams();
+  spinner('chart_vis');
+  document.getElementById('lbl_city_vis').textContent = cityLabel(city);
+  try {
+    const cityParam = city === '__all__' ? '__all__' : city;
+    const r = await fetch(`/api/dashboard/climate/visibility/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const p = d.points || [];
+    if (!p.length) { noData('chart_vis', `Pas de données visibilité pour ${city}.`); return; }
+    const el = document.getElementById('chart_vis');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_vis', [{
+      x: p.map(r => r.temperature), y: p.map(r => r.visibility), mode:'markers', type:'scatter',
+      marker:{ size:5, color: p.map(r => r.wind_speed ?? 0), colorscale:'RdYlGn', showscale:true,
+        colorbar:{ title:{ text:'Vent m/s', font:{ color:'#8b949e', size:10 } }, tickfont:{ color:'#8b949e', size:9 } },
+        opacity:.65 },
+      text: p.map(r => `Précip: ${r.precipitation ?? '—'} mm`),
+      hovertemplate:'<b>%{x:.1f} °C</b> — vis. %{y:.1f}<br>%{text}<extra></extra>',
+    }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Température (°C)' }, yaxis:{ ...LAYOUT.yaxis, title:'Visibilité (km)' }, margin:{ ...LAYOUT.margin, r:70 } }, CFG);
+  } catch (e) {
+    showErr('chart_vis', 'Impossible de charger les données de visibilité.', drawVis);
+  }
+}
+
+function refreshAll() {
+  _initialLoadDone = true;
+  drawSeasonal(); drawTemp(); drawExtremes(); drawVis();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const now = new Date();
+  document.getElementById('climate_end').value = now.toISOString().slice(0,10);
+  const past = new Date(); past.setFullYear(past.getFullYear() - 3);
+  document.getElementById('climate_start').value = past.toISOString().slice(0,10);
+
+  await loadCities();
+  drawSeasonal();
+  drawTemp(); drawExtremes(); drawVis();
+
+  document.getElementById('climate_city').addEventListener('change', refreshAll);
+  document.getElementById('btn_apply').addEventListener('click', refreshAll);
+});
+</script>
+{% endblock %}

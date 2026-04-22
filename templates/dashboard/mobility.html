@@ -1,0 +1,350 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Mobilité{% endblock %}
+{% block nav_mobility %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kpi-mini { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:.75rem 1rem; }
+  .kpi-mini .kpi-val { font-size:1.4rem; font-weight:700; color:#f0f6fc; line-height:1.1; }
+  .kpi-mini .kpi-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:.2rem; }
+  .kpi-mini .kpi-sub { font-size:.68rem; color:#484f58; margin-top:.15rem; }
+  .loading-overlay { display:flex; align-items:center; justify-content:center; height:100%; min-height:240px; }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#238636; margin-right:.35rem; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .filter-bar { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.25rem; }
+  .chart-placeholder { min-height:260px; }
+  .range-track { height:4px; border-radius:2px; }
+  .crit-badge { display:inline-block; padding:.1rem .45rem; border-radius:10px; font-size:.65rem; font-weight:600; background:rgba(239,68,68,.2); color:#ef4444; margin-left:.4rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HEADER -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">
+      <i class="bi bi-bicycle text-warning me-2"></i>Mobilité douce
+    </h4>
+    <small class="text-secondary">Stations vélos en libre-service — utilisation, disponibilité, zones critiques</small>
+  </div>
+  {% if last_update %}
+  <small class="text-secondary">
+    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+  </small>
+  {% endif %}
+</div>
+
+<!-- KPI CARDS (server-side) -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-diagram-3 me-1"></i>Réseaux</div>
+      <div class="kpi-val">{{ network_count|default:"—" }}</div>
+      <div class="kpi-sub">opérateurs connectés</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Snapshots</div>
+      <div class="kpi-val">{{ snapshot_count|default:"—" }}</div>
+      <div class="kpi-sub">observations en base</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini" id="kpi_stations_card">
+      <div class="kpi-lbl"><i class="bi bi-geo-alt me-1"></i>Stations (ville)</div>
+      <div class="kpi-val" id="kpi_stations_val">—</div>
+      <div class="kpi-sub" id="kpi_stations_city">sélectionner une ville</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini" id="kpi_crit_card">
+      <div class="kpi-lbl"><i class="bi bi-exclamation-diamond me-1 text-danger"></i>Stations critiques</div>
+      <div class="kpi-val text-danger" id="kpi_crit_val">—</div>
+      <div class="kpi-sub">sous le seuil</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label small text-secondary mb-1">Ville</label>
+      <select id="mob_city" class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label small text-secondary mb-1">
+        Seuil stations critiques :
+        <strong class="text-warning ms-1" id="mob_thresh_val">20</strong>%
+      </label>
+      <input type="range" id="mob_thresh" class="form-range" min="5" max="40" value="20" step="1" />
+      <div class="d-flex justify-content-between" style="font-size:.65rem; color:#484f58; margin-top:.1rem;">
+        <span>5%</span><span>Minimal</span><span>40%</span>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <button id="btn_apply" class="btn btn-sm btn-success w-100">
+        <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- DYNAMIC KPI CARDS -->
+<div class="row g-2 mb-3" id="mob_kpis_extra"></div>
+
+<!-- MAP -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-geo-alt me-1 text-success"></i>Carte des stations — taux d'utilisation</div>
+    <div class="d-flex gap-2 align-items-center" style="font-size:.68rem;">
+      <span style="color:#ef4444;">■</span> <span class="text-secondary">Critique</span>
+      <span style="color:#f59e0b;">■</span> <span class="text-secondary">&lt; 50%</span>
+      <span style="color:#22c55e;">■</span> <span class="text-secondary">Bon</span>
+    </div>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Survol pour le nom de station et son taux. Taille proportionnelle à la capacité.</div>
+  <div id="chart_map" class="chart-placeholder" style="min-height:400px;">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement carte…</span></div>
+  </div>
+</div>
+
+<!-- HOURLY CHART -->
+<div class="chart-panel mb-3">
+  <div class="chart-title"><i class="bi bi-clock me-1 text-info"></i>Utilisation horaire moyenne</div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Vélos disponibles et places libres en moyenne par heure de la journée (historique complet de la ville)</div>
+  <div id="chart_hourly" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- CRITICAL STATIONS -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title">
+      <i class="bi bi-bar-chart-steps me-1 text-danger"></i>Stations les plus sous-dotées
+      <span class="crit-badge" id="crit_count_badge"></span>
+    </div>
+    <small class="text-secondary" id="lbl_crit_thresh"></small>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Top 20 stations sous le seuil — tri croissant du taux d'utilisation</div>
+  <div id="chart_crit" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ preload_mob_hourly|json_script:"preload-mob-hourly" }}
+{{ preload_mob_stations|json_script:"preload-mob-stations" }}
+{{ preload_mob_critical|json_script:"preload-mob-critical" }}
+<script>
+"use strict";
+
+let _initialLoadDone = false;
+
+function _preload(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch { return null; }
+}
+
+const LAYOUT = {
+  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  font:{ color:'#8b949e', size:11 },
+  margin:{ l:50, r:18, t:22, b:50 },
+  xaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+  yaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+};
+const CFG = { responsive:true, displayModeBar:false };
+
+function spinner(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>';
+}
+
+function showErr(id, msg, fn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<div class="loading-overlay flex-column gap-2 text-center">
+    <i class="bi bi-exclamation-circle text-danger fs-4"></i>
+    <small class="text-secondary">${msg}</small>
+    ${fn ? `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="(${fn.toString()})()"><i class="bi bi-arrow-clockwise me-1"></i>Réessayer</button>` : ''}
+  </div>`;
+}
+
+function noData(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="loading-overlay text-secondary"><small><i class="bi bi-info-circle me-1"></i>${msg}</small></div>`;
+}
+
+async function loadCities() {
+  try {
+    const r = await fetch('/api/dashboard/cities/');
+    const d = await r.json();
+    const sel = document.getElementById('mob_city');
+    sel.innerHTML = '';
+    // Option "toutes villes" (agrégation nationale)
+    const allOpt = document.createElement('option');
+    allOpt.value = '__all__';
+    allOpt.textContent = 'Toutes les villes';
+    sel.appendChild(allOpt);
+    (d.cities || ['Paris']).forEach(c => {
+      const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+  } catch {}
+}
+
+async function refresh() {
+  const city = document.getElementById('mob_city').value;
+  const threshold = parseFloat(document.getElementById('mob_thresh').value);
+  document.getElementById('mob_thresh_val').textContent = threshold;
+
+  const lbl = document.getElementById('lbl_crit_thresh');
+  if (lbl) lbl.textContent = `Seuil : ${threshold}%`;
+
+  spinner('chart_map'); spinner('chart_hourly'); spinner('chart_crit');
+
+  let stations = [], crit = [];
+
+  try {
+    const _isFirst = !_initialLoadDone;
+    const preloadStations = _isFirst && _preload('preload-mob-stations');
+    const preloadCrit = _isFirst && _preload('preload-mob-critical');
+    const preloadH = _isFirst && _preload('preload-mob-hourly');
+    _initialLoadDone = true;
+
+    if (preloadStations && preloadStations.length) {
+      stations = preloadStations;
+      crit = preloadCrit || [];
+    } else {
+      const cityParam = city === '__all__' ? '' : city;
+      const [rsStations, rsCrit] = await Promise.all([
+        fetch(`/api/dashboard/mobility/stations/?city=${encodeURIComponent(cityParam)}`),
+        fetch(`/api/dashboard/mobility/critical/?city=${encodeURIComponent(cityParam)}&threshold=${threshold}`),
+      ]);
+      if (!rsStations.ok || !rsCrit.ok) throw new Error('API error');
+      const [dsStations, dsCrit] = await Promise.all([rsStations.json(), rsCrit.json()]);
+      stations = dsStations.stations || [];
+      crit = dsCrit.critical || [];
+    }
+  } catch (e) {
+    ['chart_map','chart_hourly','chart_crit'].forEach(id => showErr(id, 'Erreur de chargement.'));
+    return;
+  }
+
+  // Update KPIs
+  document.getElementById('kpi_stations_val').textContent = stations.length || '—';
+  document.getElementById('kpi_stations_city').textContent = city === '__all__' ? 'France' : city;
+  document.getElementById('kpi_crit_val').textContent = crit.length;
+  const badge = document.getElementById('crit_count_badge');
+  if (badge) badge.textContent = crit.length + ' station' + (crit.length > 1 ? 's' : '');
+
+  if (!stations.length) {
+    ['chart_map','chart_hourly','chart_crit'].forEach(id => noData(id, `Pas de données pour ${city}.`));
+    return;
+  }
+
+  const utilMean = stations.reduce((a, s) => a + (s.util_rate || 0), 0) / stations.length;
+  const bikesMean = stations.reduce((a, s) => a + (s.bikes_avg || 0), 0) / stations.length;
+
+  const cityLabel = city === '__all__' ? 'France' : city;
+  document.getElementById('mob_kpis_extra').innerHTML = `
+    <div class="col-6 col-md-3"><div class="kpi-mini"><div class="kpi-lbl">Util. moyenne</div><div class="kpi-val">${utilMean.toFixed(1)}<span style="font-size:.8rem;font-weight:400;">%</span></div><div class="kpi-sub">${cityLabel}</div></div></div>
+    <div class="col-6 col-md-3"><div class="kpi-mini"><div class="kpi-lbl">Vélos moy.</div><div class="kpi-val">${bikesMean.toFixed(0)}</div><div class="kpi-sub">par station</div></div></div>`;
+
+  // Map
+  const lat = stations.map(s => s.latitude);
+  const lon = stations.map(s => s.longitude);
+  const colors = stations.map(s => {
+    const u = s.util_rate || 0;
+    return u < threshold ? '#ef4444' : (u < 50 ? '#f59e0b' : '#22c55e');
+  });
+  const sizes = stations.map(s => Math.max(6, Math.min(18, 6 + (s.total_slots || 10) / 4)));
+  const elMap = document.getElementById('chart_map');
+  if (elMap) elMap.innerHTML = '';
+  Plotly.newPlot('chart_map', [{
+    type:'scattergeo', mode:'markers', lat, lon,
+    marker:{ size:sizes, color:colors, opacity:.8, line:{ width:0.5, color:'rgba(0,0,0,.3)' } },
+    text: stations.map(s => `<b>${s.station_name}</b><br>Util.: ${(s.util_rate||0).toFixed(1)}%<br>Vélos: ${s.bikes_avg?.toFixed(0) ?? '—'}`),
+    hovertemplate:'%{text}<extra></extra>',
+  }], {
+    ...LAYOUT,
+    geo:{
+      scope:'europe',
+      projection:{ type:'natural earth', scale: 4.3 },
+      center:{ lat:46.6, lon:2.4 },   // centre France
+      fitbounds:'locations',
+      bgcolor:'transparent',
+      showland:true,
+      landcolor:'#21262d',
+      showcoastlines:true,
+      coastlinecolor:'#30363d',
+      showframe:false
+    },
+    margin:{ l:0, r:0, t:10, b:0 },
+  }, CFG);
+
+  // Hourly chart
+  try {
+    let h;
+    if (preloadH && preloadH.length) {
+      h = preloadH;
+    } else {
+      const cityParam = city === '__all__' ? '' : city;
+      const rh = await fetch(`/api/dashboard/mobility/hourly/?city=${encodeURIComponent(cityParam)}`);
+      const dh = await rh.json();
+      h = dh.hourly || [];
+    }
+    if (h.length) {
+      const elHourly = document.getElementById('chart_hourly');
+      if (elHourly) elHourly.innerHTML = '';
+      Plotly.newPlot('chart_hourly', [
+        { x:h.map(r => r.hour), y:h.map(r => r.bikes_avg), name:'Vélos disponibles', type:'bar', marker:{ color:'rgba(99,102,241,0.75)', line:{ color:'rgba(99,102,241,0.9)', width:0.5 } }, hovertemplate:'%{x}h : %{y:.1f} vélos<extra></extra>' },
+        { x:h.map(r => r.hour), y:h.map(r => r.slots_avg), name:'Places libres', type:'bar', marker:{ color:'rgba(165,243,252,0.6)', line:{ color:'rgba(165,243,252,0.8)', width:0.5 } }, hovertemplate:'%{x}h : %{y:.1f} places<extra></extra>' },
+      ], { ...LAYOUT, barmode:'group', xaxis:{ ...LAYOUT.xaxis, title:'Heure', tickmode:'linear', tick0:0, dtick:2 }, yaxis:{ ...LAYOUT.yaxis, title:'Moyenne' }, legend:{ orientation:'h', y:1.12, font:{ color:'#8b949e' } } }, CFG);
+    } else {
+      noData('chart_hourly', 'Pas de données horaires disponibles.');
+    }
+  } catch {
+    showErr('chart_hourly', 'Erreur chargement données horaires.');
+  }
+
+  // Critical chart
+  if (!crit.length) {
+    const el = document.getElementById('chart_crit');
+    if (el) el.innerHTML = `<div class="loading-overlay text-success"><small><i class="bi bi-check-circle me-1"></i>Aucune station critique avec un seuil de ${threshold}%.</small></div>`;
+    return;
+  }
+  const top = [...crit].sort((a, b) => a.util_rate - b.util_rate).slice(0, 20);
+  const vals = top.map(s => s.util_rate);
+  const maxV = Math.max(...vals, 1);
+  const elCrit = document.getElementById('chart_crit');
+  if (elCrit) elCrit.innerHTML = '';
+  Plotly.newPlot('chart_crit', [{
+    x: vals, y: top.map(s => s.station_name), type:'bar', orientation:'h',
+    marker:{ color: vals.map(v => `rgba(239,68,68,${0.3 + 0.7 * (1 - v/maxV)})`), line:{ color:'rgba(239,68,68,0.5)', width:0.5 } },
+    text: vals.map(v => `${v.toFixed(1)}%`), textposition:'outside',
+    hovertemplate:'%{y}<br><b>%{x:.1f}%</b><extra></extra>',
+  }], {
+    ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Taux utilisation (%)', range:[0, Math.min(threshold + 5, 50)] },
+    margin:{ l:175, r:50, t:10, b:40 }, showlegend:false,
+  }, CFG);
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadCities();
+  refresh();
+
+  document.getElementById('mob_city').addEventListener('change', refresh);
+  document.getElementById('mob_thresh').addEventListener('input', () => {
+    document.getElementById('mob_thresh_val').textContent = document.getElementById('mob_thresh').value;
+  });
+  document.getElementById('btn_apply').addEventListener('click', refresh);
+});
+</script>
+{% endblock %}

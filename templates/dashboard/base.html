@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}UrbanHub{% endblock %} — Smart City Platform</title>
+
+  <!-- Bootstrap 5 CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  />
+  <!-- Bootstrap Icons -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+  />
+
+  <style>
+    :root {
+      --sidebar-width: 240px;
+      --sidebar-bg: #0d1117;
+      --sidebar-border: #21262d;
+      --accent: #238636;
+      --accent-hover: #2ea043;
+      --nav-link-color: #8b949e;
+      --nav-link-active-color: #f0f6fc;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      display: flex;
+      flex-direction: row;
+      background-color: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* ---- Sidebar ---- */
+    #sidebar {
+      width: var(--sidebar-width);
+      min-height: 100vh;
+      background-color: var(--sidebar-bg);
+      border-right: 1px solid var(--sidebar-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 100;
+      overflow-y: auto;
+    }
+
+    #sidebar .sidebar-brand {
+      padding: 1.25rem 1rem 1rem;
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+
+    #sidebar .sidebar-brand .brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      letter-spacing: 0.02em;
+    }
+
+    #sidebar .sidebar-brand .brand-subtitle {
+      font-size: 0.72rem;
+      color: var(--nav-link-color);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    #sidebar .nav-section-label {
+      padding: 1.25rem 1rem 0.4rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #484f58;
+    }
+
+    #sidebar .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.5rem 1rem;
+      color: var(--nav-link-color);
+      border-radius: 6px;
+      margin: 1px 8px;
+      font-size: 0.875rem;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    #sidebar .nav-link:hover {
+      background-color: #161b22;
+      color: var(--nav-link-active-color);
+    }
+
+    #sidebar .nav-link.active {
+      background-color: #161b22;
+      color: var(--nav-link-active-color);
+      font-weight: 600;
+    }
+
+    #sidebar .nav-link .bi {
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    #sidebar .sidebar-footer {
+      margin-top: auto;
+      padding: 1rem;
+      border-top: 1px solid var(--sidebar-border);
+      font-size: 0.75rem;
+      color: #484f58;
+    }
+
+    /* ---- Main layout ---- */
+    #main-wrapper {
+      margin-left: var(--sidebar-width);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: calc(100% - var(--sidebar-width));
+    }
+
+    /* ---- Top navbar ---- */
+    #topbar {
+      background-color: #161b22;
+      border-bottom: 1px solid var(--sidebar-border);
+      padding: 0.65rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 99;
+    }
+
+    #topbar .topbar-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f0f6fc;
+    }
+
+    #topbar .topbar-subtitle {
+      font-size: 0.75rem;
+      color: var(--nav-link-color);
+    }
+
+    #topbar .topbar-badge {
+      background-color: var(--accent);
+      color: #fff;
+      font-size: 0.65rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    /* ---- Page content ---- */
+    #page-content {
+      flex: 1;
+      padding: 1.75rem 1.5rem;
+    }
+
+    /* ---- Cards ---- */
+    .stat-card {
+      background-color: #161b22;
+      border: 1px solid var(--sidebar-border);
+      border-radius: 8px;
+    }
+
+    .stat-card .card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f0f6fc;
+    }
+
+    .stat-card .card-label {
+      font-size: 0.8rem;
+      color: var(--nav-link-color);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .stat-card .card-icon {
+      font-size: 1.75rem;
+      opacity: 0.6;
+    }
+
+    /* ---- Chart panels ---- */
+    .chart-panel {
+      background-color: #161b22;
+      border: 1px solid var(--sidebar-border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .chart-panel .chart-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 0.35rem;
+    }
+
+    .dashboard-intro {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #8b949e;
+      max-width: 52rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      background-color: #161b22;
+      border: 1px solid var(--sidebar-border);
+      border-radius: 8px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .stat-card .card-help {
+      font-size: 0.72rem;
+      line-height: 1.35;
+      color: #6e7681;
+      margin-top: 0.35rem;
+      max-width: 14rem;
+    }
+
+    .chart-panel .chart-subtitle {
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: #6e7681;
+      margin-bottom: 0.65rem;
+    }
+
+    .chart-panel .chart-caption {
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: #6e7681;
+      margin-top: 0.65rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--sidebar-border);
+    }
+
+    .chart-placeholder {
+      width: 100%;
+      height: 320px;
+    }
+
+    /* ---- Help / explanations offcanvas (dashboard) ---- */
+    #dashboardHelp.offcanvas {
+      --bs-offcanvas-width: min(420px, 100vw);
+      border-left: 1px solid var(--sidebar-border);
+    }
+
+    #dashboardHelp .offcanvas-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f0f6fc;
+    }
+
+    #dashboardHelp .help-section {
+      margin-bottom: 1.25rem;
+    }
+
+    #dashboardHelp .help-section:last-child {
+      margin-bottom: 0;
+    }
+
+    #dashboardHelp .help-section h6 {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8b949e;
+      margin-bottom: 0.4rem;
+    }
+
+    #dashboardHelp .help-section p {
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: #c9d1d9;
+      margin-bottom: 0;
+    }
+
+    #dashboardHelp .help-section p + p {
+      margin-top: 0.5rem;
+    }
+
+    /* ---- Compact stat cards when help text is in drawer ---- */
+    .stat-card .card-value {
+      margin-bottom: 0.15rem;
+    }
+
+    .stat-card .dashboard-help-trigger,
+    .chart-panel .dashboard-help-trigger {
+      font-size: 1.05rem;
+      line-height: 1;
+      text-decoration: none;
+      opacity: 0.55;
+      transition: opacity 0.15s, color 0.15s;
+      /* Clic toujours reçu par le <button>, pas par l’icône (évite cibles ambiguës) */
+      min-width: 1.75rem;
+      min-height: 1.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stat-card .dashboard-help-trigger > i,
+    .chart-panel .dashboard-help-trigger > i {
+      pointer-events: none;
+    }
+
+    .stat-card .dashboard-help-trigger:hover,
+    .stat-card .dashboard-help-trigger:focus-visible,
+    .chart-panel .dashboard-help-trigger:hover,
+    .chart-panel .dashboard-help-trigger:focus-visible {
+      opacity: 1;
+      color: var(--accent-hover) !important;
+    }
+
+    .chart-panel .chart-title-row .chart-title {
+      margin-bottom: 0;
+    }
+  </style>
+
+  {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <i class="bi bi-buildings-fill text-success fs-5"></i>
+        <span class="brand-title">UrbanHub</span>
+      </div>
+      <div class="brand-subtitle">Smart City Platform</div>
+    </div>
+
+    <div class="nav-section-label">Navigation</div>
+
+    <ul class="nav flex-column">
+      <li class="nav-item">
+        <a class="nav-link {% block nav_dashboard %}{% endblock %}" href="{% url 'dashboard:index' %}">
+          <i class="bi bi-grid-1x2-fill"></i>
+          Dashboard
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% block nav_climate %}{% endblock %}" href="{% url 'dashboard:climate' %}">
+          <i class="bi bi-cloud-sun-fill"></i>
+          Climatologie
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% block nav_air %}{% endblock %}" href="{% url 'dashboard:air' %}">
+          <i class="bi bi-wind"></i>
+          Air &amp; santé
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% block nav_mobility %}{% endblock %}" href="{% url 'dashboard:mobility' %}">
+          <i class="bi bi-bicycle"></i>
+          Mobilité
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% block nav_cross %}{% endblock %}" href="{% url 'dashboard:cross' %}">
+          <i class="bi bi-bar-chart-line-fill"></i>
+          Analyse croisée
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      Django <code class="text-secondary">:8000</code>
+      &middot; MinIO <code class="text-secondary">:9001</code>
+      &middot; Flower <code class="text-secondary">:5555</code>
+      <div class="mt-1">&copy; 2026 UrbanHub</div>
+    </div>
+  </nav>
+
+  <!-- ===================== MAIN WRAPPER ===================== -->
+  <div id="main-wrapper">
+
+    <!-- Top navbar -->
+    <div id="topbar">
+      <i class="bi bi-buildings-fill text-success"></i>
+      <div>
+        <div class="topbar-title">UrbanHub</div>
+        <div class="topbar-subtitle">Smart City Platform</div>
+      </div>
+      <span class="topbar-badge ms-2">LIVE</span>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <i class="bi bi-circle-fill text-success" style="font-size:0.5rem;"></i>
+        {% block topbar_city_badge %}<small class="text-secondary">Paris, France</small>{% endblock %}
+      </div>
+    </div>
+
+    <!-- Page content -->
+    <main id="page-content">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div><!-- /main-wrapper -->
+
+  <!-- Bootstrap 5 JS bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

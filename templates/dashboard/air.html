@@ -1,0 +1,392 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Air &amp; santé{% endblock %}
+{% block nav_air %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kpi-mini { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:.75rem 1rem; }
+  .kpi-mini .kpi-val { font-size:1.4rem; font-weight:700; color:#f0f6fc; line-height:1.1; }
+  .kpi-mini .kpi-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:.2rem; }
+  .kpi-mini .kpi-sub { font-size:.68rem; color:#484f58; margin-top:.15rem; }
+  .who-card { border-radius:8px; padding:.7rem 1rem; }
+  .who-card.exceeded { background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.35); }
+  .who-card.ok { background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.25); }
+  .who-card .pollutant-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; color:#8b949e; }
+  .who-card .days-val { font-size:1.6rem; font-weight:700; }
+  .who-card .threshold-info { font-size:.68rem; color:#6e7681; margin-top:.2rem; }
+  .loading-overlay { display:flex; align-items:center; justify-content:center; height:100%; min-height:240px; }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#238636; margin-right:.35rem; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .filter-bar { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.25rem; }
+  .poll-badge { display:inline-block; padding:.15rem .5rem; border-radius:12px; font-size:.68rem; font-weight:600; margin-left:.4rem; }
+  .chart-placeholder { min-height:260px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HEADER -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">
+      <i class="bi bi-wind text-danger me-2"></i>Santé publique &amp; qualité de l'air
+    </h4>
+    <small class="text-secondary">Séries temporelles, seuils OMS/UE, hotspots géographiques</small>
+  </div>
+  {% if last_update %}
+  <small class="text-secondary">
+    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+  </small>
+  {% endif %}
+</div>
+
+<!-- KPI CARDS (server-side) -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-broadcast me-1"></i>Capteurs</div>
+      <div class="kpi-val">{{ sensor_count|default:"—" }}</div>
+      <div class="kpi-sub">stations qualité air</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Mesures</div>
+      <div class="kpi-val">{{ measurement_count|default:"—" }}</div>
+      <div class="kpi-sub">enregistrements en base</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-bar-chart-line me-1 text-warning"></i>Polluants suivis</div>
+      <div class="kpi-val">5</div>
+      <div class="kpi-sub">PM2.5 PM10 NO₂ O₃ CO</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-exclamation-diamond me-1 text-danger"></i>Anomalies détectées</div>
+      <div class="kpi-val">{{ preload_anomaly_count|default:"—" }}</div>
+      <div class="kpi-sub">valeurs &gt; 2× moyenne</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small text-secondary mb-1">Ville</label>
+      <select id="air_city" class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small text-secondary mb-1">Polluant</label>
+      <select id="air_poll" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="pm25">PM2.5</option>
+        <option value="pm10">PM10</option>
+        <option value="no2">NO₂</option>
+        <option value="o3">O₃</option>
+        <option value="co">CO</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-secondary mb-1">Début</label>
+      <input type="date" id="air_start" class="form-control form-control-sm bg-dark text-light border-secondary" />
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-secondary mb-1">Fin</label>
+      <input type="date" id="air_end" class="form-control form-control-sm bg-dark text-light border-secondary" />
+    </div>
+    <div class="col-md-2">
+      <button id="btn_apply" class="btn btn-sm btn-success w-100">
+        <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- WHO KPI CARDS (dynamic) -->
+<div class="row g-2 mb-3" id="who_kpis">
+  <div class="col-12">
+    <div class="loading-overlay" style="min-height:60px;">
+      <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+      <span class="text-secondary small">Calcul des dépassements OMS…</span>
+    </div>
+  </div>
+</div>
+
+<!-- SERIES CHART -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-graph-up me-1 text-purple" style="color:#bc8cff;"></i>Évolution journalière</div>
+    <span id="lbl_series_poll" class="poll-badge" style="background:rgba(139,92,246,.2);color:#bc8cff;"></span>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">
+    Concentration moyenne et maximale journalière — les lignes en pointillé représentent les seuils OMS (orange) et UE (rouge)
+  </div>
+  <div id="chart_series" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- HOURLY CHART -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-clock me-1 text-warning"></i>Profil horaire moyen</div>
+    <span id="lbl_hourly_poll" class="poll-badge" style="background:rgba(249,115,22,.2);color:#f97316;"></span>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Concentration moyenne par heure de la journée (0 h – 23 h) — révèle les pics de trafic ou d'activité industrielle</div>
+  <div id="chart_hourly" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- HOTSPOTS MAP -->
+<div class="chart-panel mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-1">
+    <div class="chart-title"><i class="bi bi-geo-alt me-1 text-danger"></i>Hotspots géographiques</div>
+    <small class="text-secondary">Rouge = dépassement seuil OMS</small>
+  </div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Taille du cercle proportionnelle à la concentration relative. Survol pour détail par ville.</div>
+  <div id="chart_hot" class="chart-placeholder" style="min-height:400px;">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement carte…</span></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ preload_who|json_script:"preload-who" }}
+{{ preload_air_series|json_script:"preload-air-series" }}
+{{ preload_air_hourly|json_script:"preload-air-hourly" }}
+<script>
+"use strict";
+
+let _initialLoadDone = false;
+
+function _preload(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch { return null; }
+}
+
+const LAYOUT = {
+  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  font:{ color:'#8b949e', size:11 },
+  margin:{ l:50, r:20, t:22, b:50 },
+  xaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+  yaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+};
+const CFG = { responsive:true, displayModeBar:false };
+
+const POLL_LABELS = { pm25:'PM2.5', pm10:'PM10', no2:'NO₂', o3:'O₃', co:'CO' };
+
+function spinner(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>';
+}
+
+function showErr(id, msg, fn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<div class="loading-overlay flex-column gap-2 text-center">
+    <i class="bi bi-exclamation-circle text-danger fs-4"></i>
+    <small class="text-secondary">${msg}</small>
+    ${fn ? `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="(${fn.toString()})()"><i class="bi bi-arrow-clockwise me-1"></i>Réessayer</button>` : ''}
+  </div>`;
+}
+
+function noData(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="loading-overlay text-secondary"><small><i class="bi bi-info-circle me-1"></i>${msg}</small></div>`;
+}
+
+function cityLabel(city) {
+  return city === '__all__' ? 'France (agrégat national)' : city;
+}
+
+async function loadCities() {
+  try {
+    const r = await fetch('/api/dashboard/cities/');
+    const d = await r.json();
+    const sel = document.getElementById('air_city');
+    sel.innerHTML = '';
+    (d.cities || ['Paris']).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c === '__all__' ? 'Toutes les villes (France)' : c;
+      sel.appendChild(o);
+    });
+  } catch {}
+}
+
+async function loadWho() {
+  const city = document.getElementById('air_city').value;
+  const box = document.getElementById('who_kpis');
+  box.innerHTML = '<div class="col-12"><div class="loading-overlay" style="min-height:60px;"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Calcul…</span></div></div>';
+  try {
+    let ex, who = {}, eu = {};
+    const preloaded = !_initialLoadDone && city === 'Paris' && _preload('preload-who');
+    if (preloaded && preloaded.length) {
+      ex = preloaded;
+    } else {
+      const cityParam = city === '__all__' ? '__all__' : city;
+      const r = await fetch(`/api/dashboard/air/who/?city=${encodeURIComponent(cityParam)}`);
+      const d = await r.json();
+      ex = d.exceedances || [];
+      who = d.who_thresholds || {};
+      eu = d.eu_thresholds || {};
+    }
+    if (!ex.length) {
+      box.innerHTML = `<div class="col-12"><div class="who-card ok d-flex align-items-center gap-2">
+        <i class="bi bi-check-circle-fill text-success fs-5"></i>
+        <span class="text-success small">Aucun dépassement OMS détecté pour <strong>${cityLabel(city)}</strong>.</span>
+      </div></div>`;
+      return;
+    }
+    box.innerHTML = ex.map(row => {
+      const pollLabel = POLL_LABELS[row.pollutant] || row.pollutant.toUpperCase();
+      const whoVal = who[row.pollutant] ? `OMS: ${who[row.pollutant]} µg/m³` : '';
+      const euVal = eu[row.pollutant] ? `UE: ${eu[row.pollutant]} µg/m³` : '';
+      return `<div class="col-6 col-md-3">
+        <div class="who-card exceeded">
+          <div class="pollutant-label">${pollLabel}</div>
+          <div class="days-val text-danger">${row.days_exceeded}</div>
+          <div class="threshold-info">jours dépassés</div>
+          <div class="threshold-info mt-1">${whoVal}${whoVal && euVal ? ' · ' : ''}${euVal}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    box.innerHTML = '<div class="col-12"><small class="text-secondary">Impossible de charger les données OMS.</small></div>';
+  }
+}
+
+async function drawSeries() {
+  const city = document.getElementById('air_city').value;
+  const pollutant = document.getElementById('air_poll').value;
+  const start = document.getElementById('air_start').value;
+  const end = document.getElementById('air_end').value;
+  spinner('chart_series');
+  const lbl = document.getElementById('lbl_series_poll');
+  if (lbl) lbl.textContent = POLL_LABELS[pollutant] || pollutant.toUpperCase();
+  try {
+    let s, whoThresh = null, euThresh = null;
+    const preloaded = !_initialLoadDone && city === 'Paris' && pollutant === 'pm25' && _preload('preload-air-series');
+    if (preloaded && preloaded.length) {
+      s = preloaded;
+    } else {
+      const cityParam = city === '__all__' ? '__all__' : city;
+      const url = `/api/dashboard/air/series/?city=${encodeURIComponent(cityParam)}&pollutant=${pollutant}&start=${start}&end=${end}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      s = d.series || [];
+      whoThresh = d.who ?? null;
+      euThresh = d.eu ?? null;
+    }
+    if (!s.length) { noData('chart_series', 'Pas de données pour cette combinaison ville / polluant / période.'); return; }
+    const x = s.map(r => r.date);
+    const shapes = [];
+    if (whoThresh != null) shapes.push({ type:'line', y0:whoThresh, y1:whoThresh, x0:x[0], x1:x[x.length-1], line:{ dash:'dash', color:'#f59e0b', width:1.5 } });
+    if (euThresh != null) shapes.push({ type:'line', y0:euThresh, y1:euThresh, x0:x[0], x1:x[x.length-1], line:{ dash:'dot', color:'#ef4444', width:1.5 } });
+    const annotations = [];
+    if (whoThresh != null) annotations.push({ x:x[x.length-1], y:whoThresh, xref:'x', yref:'y', text:'OMS', font:{ size:9, color:'#f59e0b' }, showarrow:false, xanchor:'right' });
+    if (euThresh != null) annotations.push({ x:x[x.length-1], y:euThresh, xref:'x', yref:'y', text:'UE', font:{ size:9, color:'#ef4444' }, showarrow:false, xanchor:'right' });
+    const el = document.getElementById('chart_series');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_series', [
+      { x, y:s.map(r => r.value_max), name:'Max', line:{ color:'#ec4899', width:1, dash:'dot' }, type:'scatter', mode:'lines' },
+      { x, y:s.map(r => r.value_avg), name:'Moy. journalière', line:{ color:'#8b5cf6', width:2 }, fill:'tonexty', fillcolor:'rgba(139,92,246,.1)', type:'scatter', mode:'lines' },
+    ], { ...LAYOUT, yaxis:{ ...LAYOUT.yaxis, title:`${POLL_LABELS[pollutant]} (µg/m³)` }, shapes, annotations, legend:{ orientation:'h', y:1.12, font:{ color:'#8b949e' } } }, CFG);
+  } catch (e) {
+    showErr('chart_series', 'Erreur chargement série.', drawSeries);
+  }
+}
+
+async function drawHourly() {
+  const city = document.getElementById('air_city').value;
+  const pollutant = document.getElementById('air_poll').value;
+  spinner('chart_hourly');
+  const lbl = document.getElementById('lbl_hourly_poll');
+  if (lbl) lbl.textContent = POLL_LABELS[pollutant] || pollutant.toUpperCase();
+  try {
+    let h;
+    const preloaded = !_initialLoadDone && city === 'Paris' && pollutant === 'pm25' && _preload('preload-air-hourly');
+    if (preloaded && preloaded.length) {
+      h = preloaded;
+    } else {
+      const cityParam = city === '__all__' ? '__all__' : city;
+      const r = await fetch(`/api/dashboard/air/hourly/?city=${encodeURIComponent(cityParam)}&pollutant=${pollutant}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      h = d.hourly || [];
+    }
+    if (!h.length) { noData('chart_hourly', 'Pas de données horaires.'); return; }
+    const vals = h.map(r => r.value_avg);
+    const maxV = Math.max(...vals);
+    const el = document.getElementById('chart_hourly');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_hourly', [{
+      x: h.map(r => r.hour), y: vals, type:'bar',
+      marker:{ color: vals.map(v => `rgba(249,115,22,${0.3 + 0.7 * v / (maxV || 1)})`), line:{ color:'rgba(249,115,22,0.4)', width:0.5 } },
+      hovertemplate:'%{x}h → %{y:.2f} µg/m³<extra></extra>',
+    }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Heure', tickmode:'linear', tick0:0, dtick:2 }, yaxis:{ ...LAYOUT.yaxis, title:'µg/m³' }, showlegend:false }, CFG);
+  } catch (e) {
+    showErr('chart_hourly', 'Erreur chargement profil horaire.', drawHourly);
+  }
+}
+
+async function drawHot() {
+  const pollutant = document.getElementById('air_poll').value;
+  spinner('chart_hot');
+  try {
+    const r = await fetch(`/api/dashboard/air/hotspots/?pollutant=${encodeURIComponent(pollutant)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const pts = d.hotspots || [];
+    const seuil = d.who || 0;
+    if (!pts.length) { noData('chart_hot', 'Pas de données géographiques pour ce polluant.'); return; }
+    const lat = pts.map(p => p.latitude);
+    const lon = pts.map(p => p.longitude);
+    const maxV = Math.max(...pts.map(p => p.value_avg), 1);
+    const sizes = pts.map(p => Math.max(6, Math.min(28, (p.value_avg / maxV) * 28)));
+    const colors = pts.map(p => p.value_avg > seuil ? '#ef4444' : '#22c55e');
+    const el = document.getElementById('chart_hot');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('chart_hot', [{
+      type:'scattergeo', mode:'markers', lat, lon,
+      marker:{ size:sizes, color:colors, opacity:.75, line:{ width:1, color:'rgba(0,0,0,0.2)' } },
+      text: pts.map(p => `<b>${p.city}</b><br>${POLL_LABELS[pollutant]}: ${p.value_avg.toFixed(1)} µg/m³${seuil ? `<br>Seuil OMS: ${seuil} µg/m³` : ''}`),
+      hovertemplate:'%{text}<extra></extra>',
+    }], {
+      ...LAYOUT,
+      geo:{ scope:'europe', projection:{ type:'natural earth' }, showland:true, landcolor:'#21262d', showcoastlines:true, coastlinecolor:'#30363d', bgcolor:'transparent', showframe:false },
+      margin:{ l:0, r:0, t:10, b:0 },
+    }, CFG);
+  } catch (e) {
+    showErr('chart_hot', 'Erreur chargement carte.', drawHot);
+  }
+}
+
+function refresh() {
+  _initialLoadDone = true;
+  loadWho(); drawSeries(); drawHourly(); drawHot();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const now = new Date();
+  document.getElementById('air_end').value = now.toISOString().slice(0,10);
+  const past = new Date(); past.setFullYear(past.getFullYear() - 1);
+  document.getElementById('air_start').value = past.toISOString().slice(0,10);
+
+  await loadCities();
+  loadWho(); drawSeries(); drawHourly(); drawHot();
+
+  document.getElementById('btn_apply').addEventListener('click', refresh);
+  document.getElementById('air_city').addEventListener('change', refresh);
+  document.getElementById('air_poll').addEventListener('change', refresh);
+});
+</script>
+{% endblock %}

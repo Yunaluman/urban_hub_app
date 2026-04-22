@@ -1,0 +1,343 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Analyse croisée{% endblock %}
+{% block nav_cross %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kpi-mini { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:.75rem 1rem; }
+  .kpi-mini .kpi-val { font-size:1.4rem; font-weight:700; color:#f0f6fc; line-height:1.1; }
+  .kpi-mini .kpi-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:.2rem; }
+  .kpi-mini .kpi-sub { font-size:.68rem; color:#484f58; margin-top:.15rem; }
+  .loading-overlay { display:flex; align-items:center; justify-content:center; height:100%; min-height:260px; }
+  .filter-bar { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.25rem; }
+  .chart-placeholder { min-height:260px; }
+  .insight-panel { background:#161b22; border:1px solid #21262d; border-left:3px solid #238636; border-radius:8px; padding:.85rem 1rem; }
+  .insight-panel .insight-title { font-size:.72rem; text-transform:uppercase; letter-spacing:.07em; color:#3fb950; font-weight:600; margin-bottom:.5rem; }
+  .insight-panel .insight-item { font-size:.82rem; color:#c9d1d9; margin-bottom:.25rem; }
+  .insight-panel .insight-item i { color:#58a6ff; margin-right:.35rem; }
+  .corr-badge { display:inline-block; padding:.1rem .45rem; border-radius:10px; font-size:.7rem; font-weight:600; }
+  .corr-pos { background:rgba(63,185,80,.2); color:#3fb950; }
+  .corr-neg { background:rgba(239,68,68,.2); color:#ef4444; }
+  .corr-neu { background:rgba(139,148,158,.2); color:#8b949e; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HEADER -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">
+      <i class="bi bi-bar-chart-line-fill text-success me-2"></i>Analyse croisée
+    </h4>
+    <small class="text-secondary">Corrélations Météo × Pollution × Mobilité — données agrégées par jour et par ville</small>
+  </div>
+</div>
+
+<!-- KPI CARDS (server-side) -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-4">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-cloud-sun me-1 text-info"></i>Obs. météo</div>
+      <div class="kpi-val">{{ meteo_count|default:"—" }}</div>
+      <div class="kpi-sub">enregistrements disponibles</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-wind me-1 text-danger"></i>Mesures pollution</div>
+      <div class="kpi-val">{{ pollution_count|default:"—" }}</div>
+      <div class="kpi-sub">enregistrements disponibles</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="kpi-mini">
+      <div class="kpi-lbl"><i class="bi bi-bicycle me-1 text-warning"></i>Snapshots vélos</div>
+      <div class="kpi-val">{{ mobility_count|default:"—" }}</div>
+      <div class="kpi-sub">enregistrements disponibles</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-8">
+      <label class="form-label small text-secondary mb-1">Ville d'analyse</label>
+      <select id="cross_city" class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+    </div>
+    <div class="col-md-4">
+      <button id="btn_apply" class="btn btn-sm btn-success w-100">
+        <i class="bi bi-arrow-clockwise me-1"></i>Analyser
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- INSIGHTS PANEL (dynamic) -->
+<div class="insight-panel mb-3" id="insights_panel" style="display:none;">
+  <div class="insight-title"><i class="bi bi-lightbulb me-1"></i>Insights détectés</div>
+  <div id="insights_content"></div>
+</div>
+
+<!-- CORRELATION HEATMAP -->
+<div class="chart-panel mb-3">
+  <div class="chart-title"><i class="bi bi-grid-3x3-gap me-1 text-success"></i>Matrice de corrélation</div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">
+    Corrélation de Pearson entre variables journalières. Valeurs de −1 (inverse) à +1 (directe). &gt; 0.5 = corrélation notable.
+  </div>
+  <div id="chart_corr" class="chart-placeholder" style="min-height:400px;">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Calcul de la matrice…</span></div>
+  </div>
+</div>
+
+<!-- TIMELINE -->
+<div class="chart-panel mb-3">
+  <div class="chart-title"><i class="bi bi-graph-up-arrow me-1 text-warning"></i>Timeline — Température &amp; PM2.5</div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Double axe : température (°C, gauche) et PM2.5 (µg/m³, droite). Survol pour les valeurs.</div>
+  <div id="chart_timeline" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- BIKES TIMELINE -->
+<div class="chart-panel mb-3">
+  <div class="chart-title"><i class="bi bi-bicycle me-1 text-warning"></i>Utilisation vélos (%) — par jour</div>
+  <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Taux moyen d'utilisation des stations vélos de la ville sur la période disponible.</div>
+  <div id="chart_bikes" class="chart-placeholder">
+    <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
+  </div>
+</div>
+
+<!-- SCATTER CHARTS -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="chart-panel">
+      <div class="chart-title" style="font-size:.85rem;"><i class="bi bi-thermometer me-1 text-warning"></i>Température vs utilisation vélos</div>
+      <div class="chart-subtitle text-secondary" style="font-size:.72rem;">Couleur = précipitations (mm). Tendance haussière attendue : plus il fait chaud, plus les vélos sont utilisés.</div>
+      <div id="chart_sc1" class="chart-placeholder" style="min-height:280px;">
+        <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary"></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="chart-panel">
+      <div class="chart-title" style="font-size:.85rem;"><i class="bi bi-wind me-1 text-danger"></i>PM2.5 vs utilisation vélos</div>
+      <div class="chart-subtitle text-secondary" style="font-size:.72rem;">Couleur = température (°C). Tendance baissière attendue : pics de pollution → moins de sorties vélo.</div>
+      <div id="chart_sc2" class="chart-placeholder" style="min-height:280px;">
+        <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+"use strict";
+
+const LAYOUT = {
+  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+  font:{ color:'#8b949e', size:11 },
+  margin:{ l:55, r:65, t:22, b:50 },
+  xaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+  yaxis:{ gridcolor:'#21262d', linecolor:'#21262d', zerolinecolor:'#21262d' },
+};
+const CFG = { responsive:true, displayModeBar:false };
+
+function spinner(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>';
+}
+
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<div class="loading-overlay flex-column gap-2 text-center">
+    <i class="bi bi-exclamation-circle text-danger fs-4"></i>
+    <small class="text-secondary">${msg}</small>
+  </div>`;
+}
+
+function noData(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="loading-overlay text-secondary"><small><i class="bi bi-info-circle me-1"></i>${msg}</small></div>`;
+}
+
+function corrClass(v) {
+  if (v > 0.3) return 'corr-pos';
+  if (v < -0.3) return 'corr-neg';
+  return 'corr-neu';
+}
+
+async function loadCities() {
+  try {
+    const r = await fetch('/api/dashboard/cities/');
+    const d = await r.json();
+    const sel = document.getElementById('cross_city');
+    sel.innerHTML = '';
+    (d.cities || ['Paris']).forEach(c => {
+      const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+  } catch {}
+}
+
+function buildInsights(merged, corr) {
+  const insights = [];
+  const cols = corr.columns || [];
+  const z = corr.z || [];
+
+  // Find notable correlations
+  cols.forEach((c1, i) => cols.forEach((c2, j) => {
+    if (i >= j) return;
+    const v = z[i]?.[j];
+    if (v == null) return;
+    const abs = Math.abs(v);
+    if (abs > 0.5) {
+      const dir = v > 0 ? 'corrélation positive' : 'corrélation inverse';
+      insights.push(`<strong>${c1}</strong> / <strong>${c2}</strong> : ${dir} notable (r = ${v.toFixed(2)})`);
+    }
+  }));
+
+  if (!insights.length && merged.length) {
+    insights.push(`${merged.length} jours de données disponibles pour l'analyse.`);
+  }
+
+  const panel = document.getElementById('insights_panel');
+  const content = document.getElementById('insights_content');
+  if (!insights.length) { panel.style.display = 'none'; return; }
+  content.innerHTML = insights.map(i => `<div class="insight-item"><i class="bi bi-arrow-right-circle"></i>${i}</div>`).join('');
+  panel.style.display = '';
+}
+
+async function refresh() {
+  const city = document.getElementById('cross_city').value;
+  ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(spinner);
+
+  try {
+    const r = await fetch(`/api/dashboard/cross/data/?city=${encodeURIComponent(city)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const merged = d.merged || [];
+
+    if (!merged.length) {
+      ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(id =>
+        noData(id, `Données insuffisantes pour ${city}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
+      );
+      document.getElementById('insights_panel').style.display = 'none';
+      return;
+    }
+
+    buildInsights(merged, d.correlation || {});
+
+    // Correlation heatmap
+    const corr = d.correlation || {};
+    const cols = corr.columns || [];
+    const z = corr.z || [];
+    if (cols.length && z.length) {
+      const annotText = z.map(row => row.map(v => v == null ? '' : v.toFixed(2)));
+      const el = document.getElementById('chart_corr');
+      if (el) el.innerHTML = '';
+      Plotly.newPlot('chart_corr', [{
+        type:'heatmap', x:cols, y:cols, z, colorscale:'RdBu', zmid:0,
+        text:annotText, texttemplate:'<b>%{text}</b>',
+        zmin:-1, zmax:1,
+        colorbar:{ tickfont:{ color:'#8b949e', size:9 }, title:{ text:'r', font:{ color:'#8b949e', size:10 } } },
+        hovertemplate:'%{x} / %{y}<br><b>r = %{z:.3f}</b><extra></extra>',
+      }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, side:'bottom' }, yaxis:{ ...LAYOUT.yaxis, autorange:'reversed' }, margin:{ l:80, r:70, t:30, b:80 } }, CFG);
+    } else {
+      noData('chart_corr', 'Matrice de corrélation non disponible.');
+    }
+
+    // Timeline
+    const dates = merged.map(r => r.date);
+    const tracesT = [];
+    if (merged[0]?.temperature != null) {
+      tracesT.push({
+        x:dates, y:merged.map(r => r.temperature), name:'Température (°C)', type:'scatter', mode:'lines',
+        line:{ color:'#f97316', width:2 },
+        hovertemplate:'%{x}<br><b>%{y:.1f} °C</b><extra></extra>',
+      });
+    }
+    if (merged[0]?.pm25 != null) {
+      tracesT.push({
+        x:dates, y:merged.map(r => r.pm25), name:'PM2.5 (µg/m³)', yaxis:'y2', type:'scatter', mode:'lines',
+        line:{ color:'#8b5cf6', width:1.5, dash:'dot' },
+        hovertemplate:'%{x}<br><b>%{y:.1f} µg/m³</b><extra></extra>',
+      });
+    }
+    if (tracesT.length) {
+      const el = document.getElementById('chart_timeline');
+      if (el) el.innerHTML = '';
+      Plotly.newPlot('chart_timeline', tracesT, {
+        ...LAYOUT,
+        yaxis:{ ...LAYOUT.yaxis, title:'°C', titlefont:{ color:'#f97316' }, tickfont:{ color:'#f97316' } },
+        yaxis2:{ title:'µg/m³', overlaying:'y', side:'right', titlefont:{ color:'#8b5cf6' }, tickfont:{ color:'#8b5cf6' }, gridcolor:'transparent', zerolinecolor:'transparent' },
+        legend:{ orientation:'h', y:1.12, font:{ color:'#8b949e' } },
+      }, CFG);
+    } else {
+      noData('chart_timeline', 'Pas de séries temporelles disponibles.');
+    }
+
+    // Bikes utilization
+    if (merged[0]?.util_rate != null) {
+      const utilVals = merged.map(r => r.util_rate);
+      const el = document.getElementById('chart_bikes');
+      if (el) el.innerHTML = '';
+      Plotly.newPlot('chart_bikes', [{
+        x:dates, y:utilVals, name:'Util. vélos (%)', type:'scatter', mode:'lines',
+        line:{ color:'#22c55e', width:2 },
+        fill:'tozeroy', fillcolor:'rgba(34,197,94,0.08)',
+        hovertemplate:'%{x}<br><b>%{y:.1f}%</b><extra></extra>',
+      }], { ...LAYOUT, yaxis:{ ...LAYOUT.yaxis, title:'Taux utilisation (%)' }, showlegend:false }, CFG);
+    } else {
+      noData('chart_bikes', 'Pas de données mobilité pour cette ville sur la période.');
+    }
+
+    // Scatter 1 — Temp vs util_rate
+    const s1 = d.scatter_temp_util || [];
+    if (s1.length > 5) {
+      const el = document.getElementById('chart_sc1');
+      if (el) el.innerHTML = '';
+      Plotly.newPlot('chart_sc1', [{
+        x:s1.map(r => r.temperature), y:s1.map(r => r.util_rate), mode:'markers', type:'scatter',
+        marker:{ size:6, color:s1.map(r => r.precipitation || 0), colorscale:'Blues', showscale:true,
+          colorbar:{ title:{ text:'Précip (mm)', font:{ color:'#8b949e', size:9 } }, tickfont:{ color:'#8b949e', size:9 } },
+          opacity:.75, line:{ width:.5, color:'rgba(255,255,255,0.1)' } },
+        hovertemplate:'%{x:.1f} °C → %{y:.1f}%<extra></extra>',
+      }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Température (°C)' }, yaxis:{ ...LAYOUT.yaxis, title:'Util. vélos (%)' }, margin:{ ...LAYOUT.margin, r:80 } }, CFG);
+    } else {
+      noData('chart_sc1', `Pas assez de points croisés (${s1.length} jour(s)).`);
+    }
+
+    // Scatter 2 — PM2.5 vs util_rate
+    const s2 = d.scatter_pm25_util || [];
+    if (s2.length > 5) {
+      const el = document.getElementById('chart_sc2');
+      if (el) el.innerHTML = '';
+      Plotly.newPlot('chart_sc2', [{
+        x:s2.map(r => r.pm25), y:s2.map(r => r.util_rate), mode:'markers', type:'scatter',
+        marker:{ size:6, color:s2.map(r => r.temperature || 0), colorscale:'RdYlGn', showscale:true,
+          colorbar:{ title:{ text:'Temp. °C', font:{ color:'#8b949e', size:9 } }, tickfont:{ color:'#8b949e', size:9 } },
+          opacity:.75, line:{ width:.5, color:'rgba(255,255,255,0.1)' } },
+        hovertemplate:'PM2.5 %{x:.1f} → %{y:.1f}%<extra></extra>',
+      }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'PM2.5 (µg/m³)' }, yaxis:{ ...LAYOUT.yaxis, title:'Util. vélos (%)' }, margin:{ ...LAYOUT.margin, r:80 } }, CFG);
+    } else {
+      noData('chart_sc2', `Pas assez de points croisés (${s2.length} jour(s)).`);
+    }
+
+  } catch (e) {
+    ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(id => showErr(id, 'Erreur de chargement des données croisées.'));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadCities();
+  refresh();
+  document.getElementById('cross_city').addEventListener('change', refresh);
+  document.getElementById('btn_apply').addEventListener('click', refresh);
+});
+</script>
+{% endblock %}

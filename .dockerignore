@@ -1,0 +1,31 @@
+# Secrets & config hôte
+.env
+.env.example
+
+# Data science (non requis dans l'image Docker)
+environment.yml
+notebooks/
+
+# Outils de développement
+.git/
+.gitignore
+.cursor/
+.claude/
+.claude-flow/
+.swarm/
+.mypy_cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# Documentation
+*.md
+CLAUDE.md
+
+# Docker (inutile dans le contexte de build)
+docker-compose.yml
+.dockerignore
+
+# Données & cache Django (générés au runtime)
+staticfiles/
+media/
