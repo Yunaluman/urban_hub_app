@@ -1,0 +1,46 @@
+# Django
+django==4.2.*
+djangorestframework==3.15.*
+django-cors-headers==4.3.*
+
+# Database — psycopg v3 (recommandé sous Windows ; évite UnicodeDecodeError fréquent avec psycopg2).
+psycopg[binary]>=3.2,<4
+
+# Celery (async + scheduling)
+celery==5.3.*
+django-celery-beat==2.6.*
+django-celery-results==2.5.*
+flower==2.0.*
+redis==5.0.*
+
+# Data Lake (MinIO / S3)
+boto3==1.34.*
+django-storages==1.14.*
+
+# Data processing
+# NumPy 1.26 n’a pas de roues précompilées pour Python 3.13 sous Windows (build source → C compiler requis).
+# NumPy 2.x fournit des binaires cp313-win_amd64.
+pandas>=2.2,<3
+numpy>=2.0,<3
+pyarrow>=15.0,<20   # Parquet I/O (MinIO Bronze/Silver/Gold)
+requests==2.31.*
+httpx==0.27.*
+# aiohttp 3.9 : pas de roue cp313 sous Windows → build C++ (VS Build Tools). 3.10+ fournit des binaires.
+aiohttp>=3.10,<4
+
+# Visualisation
+plotly==5.20.*
+matplotlib>=3.8,<4
+seaborn>=0.13,<1
+
+# Analyse de données (notebooks)
+scipy>=1.12,<2
+scikit-learn>=1.4,<2
+
+# Jupyter
+jupyterlab>=4.1,<5
+ipykernel>=6.29,<7
+
+# Utilitaires
+python-decouple==3.8
+python-dotenv==1.0.*

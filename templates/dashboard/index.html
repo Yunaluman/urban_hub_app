@@ -1,0 +1,680 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block nav_dashboard %}active{% endblock %}
+
+{% block topbar_city_badge %}
+<small class="text-secondary">{{ selected_city }}, France</small>
+{% endblock %}
+
+{% block content %}
+
+<!-- ==================== PAGE HEADER ==================== -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">Dashboard</h4>
+    <small class="text-secondary">Vue d'ensemble des données Smart City &mdash; {{ selected_city }}</small>
+  </div>
+  <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+
+    <!-- Filtre par ville -->
+    <form method="get" class="d-inline-flex align-items-center gap-2 me-1" id="city-filter-form">
+      <label for="city-select" class="text-secondary small mb-0 flex-shrink-0">
+        <i class="bi bi-geo-alt"></i>
+      </label>
+      <select
+        id="city-select"
+        name="city"
+        class="form-select form-select-sm border-secondary"
+        style="width:auto; background-color:#161b22; color:#c9d1d9;"
+        onchange="this.form.submit()"
+        title="Filtrer par ville"
+      >
+        {% for city in available_cities %}
+          <option value="{{ city }}"{% if city == selected_city %} selected{% endif %}>{{ city }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 dashboard-help-trigger"
+      data-bs-toggle="offcanvas"
+      data-bs-target="#dashboardHelp"
+      data-help-target="help-dashboard-intro"
+      aria-controls="dashboardHelp"
+      title="Afficher les explications sur les indicateurs"
+    >
+      <i class="bi bi-info-circle"></i>
+      Explications
+    </button>
+    {% if last_update %}
+      <small class="text-secondary">
+        <i class="bi bi-clock me-1"></i>
+        Dernière mise à jour&nbsp;: <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+      </small>
+    {% else %}
+      <small class="text-secondary">Aucune donnée disponible</small>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ==================== STAT CARDS ==================== -->
+<div class="row g-3 mb-4">
+
+  <!-- Stations météo -->
+  <div class="col-12 col-sm-6 col-xl-3">
+    <div class="stat-card card border-0 p-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="flex-grow-1 min-w-0 pe-2">
+          <div class="d-flex align-items-center justify-content-between gap-1 mb-1">
+            <div class="card-label mb-0">Stations météo</div>
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#dashboardHelp"
+              data-help-target="help-stations-meteo"
+              title="Explication"
+              aria-label="Explication sur les stations météo"
+              aria-controls="dashboardHelp"
+            >
+              <i class="bi bi-info-circle"></i>
+            </button>
+          </div>
+          <div class="card-value">{{ meteo_station_count|default:"—" }}</div>
+          {% if last_meteo_update %}
+            <small class="text-secondary" style="font-size:0.72rem;">
+              Dernière synchro données météo&nbsp;: {{ last_meteo_update|date:"H:i" }}
+            </small>
+          {% endif %}
+        </div>
+        <div class="card-icon text-info">
+          <i class="bi bi-cloud-sun-fill"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Réseaux vélos -->
+  <div class="col-12 col-sm-6 col-xl-3">
+    <div class="stat-card card border-0 p-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="flex-grow-1 min-w-0 pe-2">
+          <div class="d-flex align-items-center justify-content-between gap-1 mb-1">
+            <div class="card-label mb-0">Réseaux vélos</div>
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#dashboardHelp"
+              data-help-target="help-reseaux-velos"
+              title="Explication"
+              aria-label="Explication sur les réseaux vélos"
+              aria-controls="dashboardHelp"
+            >
+              <i class="bi bi-info-circle"></i>
+            </button>
+          </div>
+          <div class="card-value">{{ bike_network_count|default:"—" }}</div>
+          {% if last_mobility_update %}
+            <small class="text-secondary" style="font-size:0.72rem;">
+              Dernière synchro mobilité&nbsp;: {{ last_mobility_update|date:"H:i" }}
+            </small>
+          {% endif %}
+        </div>
+        <div class="card-icon text-warning">
+          <i class="bi bi-bicycle"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Capteurs pollution -->
+  <div class="col-12 col-sm-6 col-xl-3">
+    <div class="stat-card card border-0 p-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="flex-grow-1 min-w-0 pe-2">
+          <div class="d-flex align-items-center justify-content-between gap-1 mb-1">
+            <div class="card-label mb-0">Capteurs pollution</div>
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#dashboardHelp"
+              data-help-target="help-capteurs-pollution"
+              title="Explication"
+              aria-label="Explication sur les capteurs pollution"
+              aria-controls="dashboardHelp"
+            >
+              <i class="bi bi-info-circle"></i>
+            </button>
+          </div>
+          <div class="card-value">{{ pollution_sensor_count|default:"—" }}</div>
+          {% if last_pollution_update %}
+            <small class="text-secondary" style="font-size:0.72rem;">
+              Dernière synchro pollution&nbsp;: {{ last_pollution_update|date:"H:i" }}
+            </small>
+          {% endif %}
+        </div>
+        <div class="card-icon text-danger">
+          <i class="bi bi-wind"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Total observations -->
+  <div class="col-12 col-sm-6 col-xl-3">
+    <div class="stat-card card border-0 p-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="flex-grow-1 min-w-0 pe-2">
+          <div class="d-flex align-items-center justify-content-between gap-1 mb-1">
+            <div class="card-label mb-0">Total observations</div>
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#dashboardHelp"
+              data-help-target="help-derniere-maj"
+              title="Explication"
+              aria-label="Explication sur le total observations"
+              aria-controls="dashboardHelp"
+            >
+              <i class="bi bi-info-circle"></i>
+            </button>
+          </div>
+          <div class="card-value">{{ total_observations|default:"—" }}</div>
+          {% if last_update %}
+            <small class="text-secondary" style="font-size:0.72rem;">
+              Dernière synchro&nbsp;: {{ last_update|date:"d/m/Y H:i" }}
+            </small>
+          {% endif %}
+        </div>
+        <div class="card-icon text-success">
+          <i class="bi bi-database-fill"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /stat cards -->
+
+<!-- ==================== CHARTS ROW ==================== -->
+<div class="row g-3">
+
+  <!-- Météo chart -->
+  <div class="col-12 col-lg-4">
+    <div class="chart-panel">
+      <div class="chart-title-row d-flex align-items-start justify-content-between gap-2 mb-2">
+        <div class="chart-title mb-0">
+          <i class="bi bi-cloud-sun me-1 text-info"></i>Météo — Température moyenne mensuelle
+        </div>
+        <button
+          type="button"
+          class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#dashboardHelp"
+          data-help-target="help-chart-meteo"
+          title="Explication"
+          aria-label="Explication sur le graphique météo"
+          aria-controls="dashboardHelp"
+        >
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+      <div id="meteo_chart" class="chart-placeholder">
+        <div class="d-flex align-items-center justify-content-center h-100" style="min-height:280px;">
+          <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+          <span class="text-secondary small">Chargement…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobilité chart -->
+  <div class="col-12 col-lg-4">
+    <div class="chart-panel">
+      <div class="chart-title-row d-flex align-items-start justify-content-between gap-2 mb-2">
+        <div class="chart-title mb-0">
+          <i class="bi bi-bicycle me-1 text-warning"></i>Mobilité — Vélos disponibles par heure
+        </div>
+        <button
+          type="button"
+          class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#dashboardHelp"
+          data-help-target="help-chart-mobilite"
+          title="Explication"
+          aria-label="Explication sur le graphique mobilité"
+          aria-controls="dashboardHelp"
+        >
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+      <div id="mobility_chart" class="chart-placeholder">
+        <div class="d-flex align-items-center justify-content-center h-100" style="min-height:280px;">
+          <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+          <span class="text-secondary small">Chargement…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pollution chart -->
+  <div class="col-12 col-lg-4">
+    <div class="chart-panel">
+      <div class="chart-title-row d-flex align-items-start justify-content-between gap-2 mb-2">
+        <div class="chart-title mb-0">
+          <i class="bi bi-wind me-1 text-danger"></i>Pollution — Variation journalière par polluant
+        </div>
+        <button
+          type="button"
+          class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#dashboardHelp"
+          data-help-target="help-chart-pollution"
+          title="Explication"
+          aria-label="Explication sur le graphique pollution"
+          aria-controls="dashboardHelp"
+        >
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+      <div id="pollution_chart" class="chart-placeholder">
+        <div class="d-flex align-items-center justify-content-center h-100" style="min-height:280px;">
+          <span class="spinner-border spinner-border-sm text-secondary me-2"></span>
+          <span class="text-secondary small">Chargement…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /charts row -->
+
+<!-- ==================== VOLET EXPLICATIONS (droit) ==================== -->
+<div
+  class="offcanvas offcanvas-end text-bg-dark"
+  tabindex="-1"
+  id="dashboardHelp"
+  aria-labelledby="dashboardHelpLabel"
+>
+  <div class="offcanvas-header border-bottom border-secondary">
+    <h5 class="offcanvas-title" id="dashboardHelpLabel">Explications</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div class="dashboard-intro mb-4" id="help-dashboard-intro">
+      <strong class="text-secondary d-block mb-2">À quoi sert ce tableau&nbsp;?</strong>
+      Il regroupe des <strong class="text-body">indicateurs de suivi</strong> pour le territoire couvert (ici Paris)&nbsp;:
+      nombre de sources de données connectées, puis trois graphiques sur l’historique en base.
+      Ces chiffres <strong class="text-body">ne sont pas des objectifs politiques ni des normes légales</strong>&nbsp;;
+      ils reflètent ce que l’application a pu collecter et agréger à la dernière synchronisation.
+    </div>
+
+    <div class="help-section" id="help-stations-meteo">
+      <h6>Stations météo</h6>
+      <p>
+        Nombre de <strong>points de mesure météo</strong> suivis dans la base (réseau couvert par l’appli), pas la température du jour.
+      </p>
+    </div>
+    <div class="help-section" id="help-reseaux-velos">
+      <h6>Réseaux vélos</h6>
+      <p>
+        Nombre de <strong>réseaux de vélos en libre-service</strong> intégrés (opérateurs / zones), pas le nombre total de vélos physiques.
+      </p>
+    </div>
+    <div class="help-section" id="help-capteurs-pollution">
+      <h6>Capteurs pollution</h6>
+      <p>
+        Nombre de <strong>capteurs qualité de l’air</strong> suivis ; plus le réseau est dense, plus les cartes et moyennes sont représentatives localement.
+      </p>
+    </div>
+    <div class="help-section" id="help-derniere-maj">
+      <h6>Total observations</h6>
+      <p>
+        Somme de toutes les observations en base&nbsp;: météo + pollution + snapshots vélos. Indicateur de la richesse du jeu de données collecté.
+      </p>
+      <p>
+        La date affichée est l'horodatage le plus récent parmi les trois sources (synchro la plus fraîche dans le système).
+      </p>
+    </div>
+
+    <hr class="border-secondary my-4" />
+
+    <div class="help-section" id="help-chart-meteo">
+      <h6>Météo — Température moyenne mensuelle</h6>
+      <p>
+        Moyenne des températures enregistrées en base, <strong>par mois</strong> (historique disponible). Utile pour comparer les saisons, pas pour la météo instantanée.
+      </p>
+      <p class="text-secondary small mt-2 mb-0">
+        Axe horizontal&nbsp;: mois (année-mois). Axe vertical&nbsp;: degrés Celsius (°C). Chaque barre = moyenne sur toutes les observations de ce mois dans la base.
+      </p>
+    </div>
+    <div class="help-section" id="help-chart-mobilite">
+      <h6>Mobilité — Vélos disponibles par heure</h6>
+      <p>
+        <strong>Moyenne</strong> du nombre de vélos signalés comme disponibles, regroupée par <strong>tranche horaire</strong> (0h–23h), sur l’historique en base. Indique les habitudes d’usage (pics creux), pas la capacité totale du parc.
+      </p>
+      <p class="text-secondary small mt-2 mb-0">
+        Axe horizontal&nbsp;: heure de la journée. Axe vertical&nbsp;: nombre moyen de vélos disponibles (toutes stations confondues selon les données chargées). Les heures sans mesure apparaissent comme un trou dans la courbe.
+      </p>
+    </div>
+    <div class="help-section" id="help-chart-pollution">
+      <h6>Pollution — Variation journalière par polluant</h6>
+      <p>
+        Concentration moyenne dans l’air par <strong>heure de la journée</strong> (toutes mesures agrégées), pour chaque polluant (ex. PM2.5, PM10, O₃). Unité&nbsp;: <strong>µg/m³</strong> (microgrammes par mètre cube). Une courbe absente = pas de mesure exploitable pour ce polluant dans la période.
+      </p>
+      <p class="text-secondary small mt-2 mb-0">
+        Les valeurs physiquement impossibles (ex. concentrations &lt; 0, souvent erreur capteur) sont ignorées sur le graphique. Ce graphique aide à repérer des <strong>profils typiques</strong> (trafic, journée) ; il ne remplace pas un indice officiel ou réglementaire.
+      </p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+{{ preload_meteo_monthly|json_script:"preload-meteo-monthly" }}
+{{ preload_mobility_hourly|json_script:"preload-mob-hourly" }}
+{{ preload_pollution_variation|json_script:"preload-poll-variation" }}
+<script>
+"use strict";
+
+function _preload(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch { return null; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared Plotly layout defaults                                        */
+/* ------------------------------------------------------------------ */
+const PLOTLY_LAYOUT_DEFAULTS = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: 'transparent',
+  font: { color: '#8b949e', size: 11 },
+  margin: { l: 45, r: 15, t: 20, b: 45 },
+  xaxis: { gridcolor: '#21262d', linecolor: '#21262d', zerolinecolor: '#21262d' },
+  yaxis: { gridcolor: '#21262d', linecolor: '#21262d', zerolinecolor: '#21262d' },
+  showlegend: false,
+};
+
+const PLOTLY_CONFIG = { responsive: true, displayModeBar: false };
+
+/** Libellés mois pour l’axe X (évite l’interprétation « date » par Plotly sur des chaînes type 2026-01). */
+const MONTHS_FR = [
+  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+];
+
+/* ------------------------------------------------------------------ */
+/* Helper: show an error placeholder inside a chart div                */
+/* ------------------------------------------------------------------ */
+function showChartError(elementId, message) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="d-flex align-items-center justify-content-center h-100 text-secondary">
+      <div class="text-center">
+        <i class="bi bi-exclamation-circle fs-4 mb-2 d-block"></i>
+        <small>${message}</small>
+      </div>
+    </div>`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Météo chart — fetch /api/meteo/stats/ (API REST)                     */
+/* ------------------------------------------------------------------ */
+async function loadMeteoChart() {
+  try {
+    const preloaded = _preload('preload-meteo-monthly');
+    let monthly;
+    if (preloaded && preloaded.length) {
+      monthly = preloaded;
+    } else {
+      const response = await fetch('/api/meteo/stats/?city={{ selected_city|urlencode }}');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      monthly = data.avg_temp_by_month || [];
+    }
+
+    if (monthly.length === 0) {
+      showChartError('meteo_chart', 'Aucune donnée météo disponible');
+      return;
+    }
+
+    const labels = monthly.map((r) => {
+      const m = Number(r.month);
+      const y = r.year;
+      const label = m >= 1 && m <= 12 ? `${MONTHS_FR[m - 1]} ${y}` : `${y}-${String(m).padStart(2, '0')}`;
+      return label;
+    });
+    const values = monthly.map((r) => {
+      const v = r.avg_temperature;
+      return v === null || v === undefined ? null : Number(v);
+    });
+
+    const trace = {
+      x: labels,
+      y: values,
+      type: 'bar',
+      name: 'Température moy. (°C)',
+      marker: { color: '#58a6ff' },
+    };
+
+    const layout = {
+      ...PLOTLY_LAYOUT_DEFAULTS,
+      yaxis: { ...PLOTLY_LAYOUT_DEFAULTS.yaxis, title: 'Température (°C)' },
+      xaxis: {
+        ...PLOTLY_LAYOUT_DEFAULTS.xaxis,
+        type: 'category',
+        tickangle: -45,
+        title: 'Mois (données en base)',
+      },
+    };
+
+    const el = document.getElementById('meteo_chart');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('meteo_chart', [trace], layout, PLOTLY_CONFIG);
+  } catch (err) {
+    console.error('Meteo chart error:', err);
+    showChartError('meteo_chart', 'Impossible de charger les données météo');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobilité chart — fetch /api/mobility/stats/                         */
+/* ------------------------------------------------------------------ */
+async function loadMobilityChart() {
+  try {
+    const preloaded = _preload('preload-mob-hourly');
+    let peaks;
+    if (preloaded && preloaded.length) {
+      peaks = preloaded;
+    } else {
+      const response = await fetch('/api/mobility/stats/?city={{ selected_city|urlencode }}');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      peaks = data.hourly_usage_peaks || [];
+    }
+
+    if (peaks.length === 0) {
+      showChartError('mobility_chart', 'Aucune donnée de mobilité disponible');
+      return;
+    }
+
+    const peakByHour = new Map(peaks.map((r) => [Number(r.hour), r.avg_bikes_available]));
+    const hours24 = Array.from({ length: 24 }, (_, h) => h);
+    const bikes24 = hours24.map((h) => (peakByHour.has(h) ? peakByHour.get(h) : null));
+
+    const trace = {
+      x: hours24,
+      y: bikes24,
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'Vélos disponibles (moy.)',
+      line: { color: '#e3b341', width: 2 },
+      marker: { size: 5, color: '#e3b341' },
+      fill: 'tozeroy',
+      fillcolor: 'rgba(227,179,65,0.10)',
+      connectgaps: false,
+    };
+
+    const layout = {
+      ...PLOTLY_LAYOUT_DEFAULTS,
+      xaxis: {
+        ...PLOTLY_LAYOUT_DEFAULTS.xaxis,
+        type: 'linear',
+        title: 'Heure (0h = minuit)',
+        range: [-0.5, 23.5],
+        tickmode: 'linear',
+        tick0: 0,
+        dtick: 2,
+      },
+      yaxis: { ...PLOTLY_LAYOUT_DEFAULTS.yaxis, title: 'Moy. vélos disponibles' },
+    };
+
+    const el = document.getElementById('mobility_chart');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('mobility_chart', [trace], layout, PLOTLY_CONFIG);
+  } catch (err) {
+    console.error('Mobility chart error:', err);
+    showChartError('mobility_chart', 'Impossible de charger les données de mobilité');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Pollution chart — fetch /api/pollution/stats/                       */
+/* ------------------------------------------------------------------ */
+async function loadPollutionChart() {
+  try {
+    const preloaded = _preload('preload-poll-variation');
+    let variation;
+    if (preloaded && Object.keys(preloaded).length) {
+      variation = preloaded;
+    } else {
+      const response = await fetch('/api/pollution/stats/?city={{ selected_city|urlencode }}');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      variation = data.daily_variation || {};
+    }
+    const entries = Object.entries(variation);
+
+    if (entries.length === 0) {
+      showChartError('pollution_chart', 'Aucune donnée de pollution disponible');
+      return;
+    }
+
+    const POLLUTANT_COLORS = {
+      pm25: '#f85149',
+      pm10: '#ff7b72',
+      no2:  '#ffa657',
+      o3:   '#79c0ff',
+      co:   '#56d364',
+      so2:  '#bc8cff',
+    };
+
+    const traces = entries
+      .map(([name, points]) => {
+        const xs = points.map((p) => p.hour);
+        const ys = points.map((p) => {
+          const v = p.avg_value;
+          if (v === null || v === undefined || Number(v) < 0) return null;
+          return Number(v);
+        });
+        return {
+          x: xs,
+          y: ys,
+          type: 'scatter',
+          mode: 'lines',
+          name: name.toUpperCase(),
+          line: { color: POLLUTANT_COLORS[name] || '#8b949e', width: 1.5 },
+          connectgaps: false,
+        };
+      })
+      .filter((t) => t.y.some((v) => v !== null));
+
+    if (traces.length === 0) {
+      showChartError('pollution_chart', 'Aucune donnée de pollution exploitable (après exclusion des valeurs invalides)');
+      return;
+    }
+
+    const layout = {
+      ...PLOTLY_LAYOUT_DEFAULTS,
+      xaxis: {
+        ...PLOTLY_LAYOUT_DEFAULTS.xaxis,
+        title: 'Heure de la journée',
+        tickmode: 'linear',
+        tick0: 0,
+        dtick: 2,
+        range: [-0.5, 23.5],
+      },
+      yaxis: { ...PLOTLY_LAYOUT_DEFAULTS.yaxis, title: 'Concentration (µg/m³)' },
+      showlegend: true,
+      legend: { font: { color: '#8b949e', size: 10 }, bgcolor: 'transparent' },
+    };
+
+    const el = document.getElementById('pollution_chart');
+    if (el) el.innerHTML = '';
+    Plotly.newPlot('pollution_chart', traces, layout, PLOTLY_CONFIG);
+  } catch (err) {
+    console.error('Pollution chart error:', err);
+    showChartError('pollution_chart', 'Impossible de charger les données de pollution');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Bootstrap all charts on DOM ready                                   */
+/* ------------------------------------------------------------------ */
+function scrollDashboardHelpTo(targetId) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function initDashboardHelpPanel() {
+  const helpPanel = document.getElementById('dashboardHelp');
+  if (!helpPanel) return;
+
+  helpPanel.addEventListener('shown.bs.offcanvas', () => {
+    const id = helpPanel.dataset.pendingScroll;
+    if (id) {
+      scrollDashboardHelpTo(id);
+      delete helpPanel.dataset.pendingScroll;
+    }
+  });
+
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target.closest('.dashboard-help-trigger');
+      if (!btn) return;
+      const id = btn.getAttribute('data-help-target');
+      if (id) helpPanel.dataset.pendingScroll = id;
+      if (helpPanel.classList.contains('show')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (id) scrollDashboardHelpTo(id);
+      }
+    },
+    true,
+  );
+}
+
+function startDashboardPage() {
+  loadMeteoChart();
+  loadMobilityChart();
+  loadPollutionChart();
+  initDashboardHelpPanel();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startDashboardPage);
+} else {
+  startDashboardPage();
+}
+</script>
+{% endblock %}

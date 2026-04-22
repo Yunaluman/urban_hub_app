@@ -1,0 +1,22 @@
+.env
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+.DS_Store
+staticfiles/
+media/
+notebooks/.ipynb_checkpoints/
+data/lake/
+.claude-flow/
+.swarm/
+node_modules/
+
+# AI & agent config
+.claude/
+CLAUDE.md
+.mcp.json
+.cursor
+
+# Python tools
+.mypy_cache/

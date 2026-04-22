@@ -1,0 +1,49 @@
+name: urbanhub
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - pip
+
+  # ─── Data processing ──────────────────────────────────────────────
+  - pandas>=2.2
+  - numpy>=1.26
+  - scipy
+  - statsmodels
+
+  # ─── PySpark local mode ───────────────────────────────────────────
+  - pyspark>=3.5
+  - pyarrow
+
+  # ─── Base de données ──────────────────────────────────────────────
+  - sqlalchemy>=2.0
+
+  # ─── Data Lake (MinIO / S3) ───────────────────────────────────────
+  - boto3
+
+  # ─── Collecte de données ──────────────────────────────────────────
+  - requests
+  - httpx
+  - aiohttp
+  - tqdm
+
+  # ─── Cache / Broker ───────────────────────────────────────────────
+  - redis-py
+
+  # ─── Machine learning ─────────────────────────────────────────────
+  - scikit-learn
+
+  # ─── Utilitaires ─────────────────────────────────────────────────
+  - python-dotenv
+
+  # ─── Cartes / viz (scripts & notebooks) — dashboard principal = Django ─
+  - pip:
+      - psycopg[binary]>=3.2,<4
+      - ipykernel>=6.29,<7
+      - jupyterlab>=4.1,<5
+      - plotly>=5.20
+      - folium
+      - geopandas
+      - mapclassify
