@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-import re
 
 import pandas as pd
 from django.core.cache import cache
@@ -16,9 +15,10 @@ from rest_framework.views import APIView
 
 from apps.dashboard.constants import EU_THRESHOLDS, POLLUTANTS, WHO_THRESHOLDS
 from apps.dashboard.services import queries as Q
+from apps.dashboard.services.cities import canonicalize_city, is_reasonable_city_name, ALL_CITIES
 
 logger = logging.getLogger(__name__)
-ALL_CITIES = '__all__'
+SUMMARY_PAGES = {'home', 'climate', 'air', 'mobility', 'cross'}
 
 
 def _parse_date(s: str | None, default: date) -> str:
@@ -55,39 +55,8 @@ def _request_city(request, *, default: str = ALL_CITIES) -> str:
 
 
 def _canonicalize_city(raw: str, canon: list[str]) -> str | None:
-    """
-    Normalise un libellé ville hétérogène vers une ville canonique.
-
-    Ex: "80 Boulevard ... Paris 75015 France" -> "Paris"
-    """
-    if not raw:
-        return None
-    s = str(raw).strip()
-    if not s:
-        return None
-    s_l = s.lower()
-    # Match by substring against canonical city names, prefer the longest match.
-    matches = [c for c in canon if c and c.lower() in s_l]
-    if not matches:
-        return None
-    return max(matches, key=len)
-
-
-_CITY_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,60}$")
-
-
 def _is_reasonable_city_name(s: str) -> bool:
-    """
-    Heuristique: un nom de ville "humain" (pas de codes, pas d'adresses).
-    """
-    if not s:
-        return False
-    s = str(s).strip()
-    if not s or ',' in s:
-        return False
-    if any(ch.isdigit() for ch in s):
-        return False
-    return bool(_CITY_RE.match(s))
+    return is_reasonable_city_name(s)
 
 
 class CitiesListView(APIView):
@@ -116,7 +85,7 @@ class CitiesListView(APIView):
                 )
                 # Map noisy pollution cities to canonical (meteo-driven) names when possible.
                 for raw in raw_poll:
-                    mapped = _canonicalize_city(str(raw), canonical)
+                    mapped = canonicalize_city(str(raw), canonical)
                     if mapped:
                         cities.add(mapped)
             except Exception:
@@ -140,6 +109,23 @@ class CitiesListView(APIView):
             return {'cities': [ALL_CITIES] + base}
 
         payload = _cached_response('cities', 300, _build)
+        return Response(payload)
+
+
+class DashboardPageSummaryView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, page: str):
+        if page not in SUMMARY_PAGES:
+            return Response({'detail': 'Unknown summary page.'}, status=404)
+
+        city = _request_city(request)
+        payload = _cached_response(
+            f'summary-{page}',
+            180,
+            lambda: Q.get_dashboard_page_summary(page, city) or {},
+            city=city,
+        )
         return Response(payload)
 
 
@@ -308,6 +294,7 @@ class AirHotspotsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        city = _request_city(request)
         pollutant = request.query_params.get('pollutant', 'pm25')
         if pollutant not in POLLUTANTS:
             pollutant = 'pm25'
@@ -315,9 +302,12 @@ class AirHotspotsView(APIView):
             'air-hotspots',
             600,
             lambda: {
-                'hotspots': Q.jsonable_records(Q.get_pollution_hotspots(pollutant)),
+                'hotspots': Q.jsonable_records(
+                    Q.get_pollution_hotspots(pollutant, city)
+                ),
                 'who': WHO_THRESHOLDS.get(pollutant, 0),
             },
+            city=city,
             pollutant=pollutant,
         )
         return Response(payload)

@@ -28,11 +28,9 @@
     </h4>
     <small class="text-secondary">Températures, saisonnalité, événements extrêmes</small>
   </div>
-  {% if last_update %}
   <small class="text-secondary">
-    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+    <span class="status-dot"></span>Données au <strong id="climate_last_update_val">{{ last_update|date:"d/m/Y H:i"|default:"—" }}</strong>
   </small>
-  {% endif %}
 </div>
 
 <!-- KPI CARDS (server-side) -->
@@ -47,7 +45,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ station_count|default:"—" }}</div>
+      <div class="kpi-val" id="climate_kpi_station_count">{{ station_count|default:"—" }}</div>
       <div class="kpi-sub">points de mesure</div>
     </div>
   </div>
@@ -61,7 +59,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ observation_count|default:"—" }}</div>
+      <div class="kpi-val" id="climate_kpi_observation_count">{{ observation_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements en base</div>
     </div>
   </div>
@@ -75,7 +73,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ preload_hot_days|default:"—" }}</div>
+      <div class="kpi-val" id="climate_kpi_hot_days">{{ preload_hot_days|default:"—" }}</div>
       <div class="kpi-sub">&gt; 35 °C (base entière)</div>
     </div>
   </div>
@@ -89,7 +87,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ preload_cold_days|default:"—" }}</div>
+      <div class="kpi-val" id="climate_kpi_cold_days">{{ preload_cold_days|default:"—" }}</div>
       <div class="kpi-sub">&lt; -5 °C (base entière)</div>
     </div>
   </div>
@@ -265,6 +263,32 @@ function cityLabel(city) {
   return city === '__all__' ? 'France (agrégat national)' : city;
 }
 
+function formatDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('fr-FR', {
+    day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+}
+
+async function refreshSummary() {
+  const { city } = getParams();
+  const cityParam = city === '__all__' ? '__all__' : city;
+  try {
+    const r = await fetch(`/api/dashboard/summary/climate/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json();
+    document.getElementById('climate_kpi_station_count').textContent = s.station_count ?? '—';
+    document.getElementById('climate_kpi_observation_count').textContent = s.observation_count ?? '—';
+    document.getElementById('climate_kpi_hot_days').textContent = s.hot_days ?? '—';
+    document.getElementById('climate_kpi_cold_days').textContent = s.cold_days ?? '—';
+    document.getElementById('climate_last_update_val').textContent = formatDateTime(s.last_update);
+  } catch (_) {
+    // Keep server-rendered fallback values.
+  }
+}
+
 async function drawTemp() {
   const { city, start, end } = getParams();
   const cityParam = city === '__all__' ? '__all__' : city;
@@ -336,20 +360,25 @@ async function drawExtremes() {
   const { city } = getParams();
   const cityParam = city === '__all__' ? '__all__' : city;
   spinner('chart_extremes');
-  document.getElementById('lbl_city_ext').textContent = cityLabel(city);
   try {
     const r = await fetch(`/api/dashboard/climate/extremes/?city=${encodeURIComponent(cityParam)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     const s = d.extremes || [];
-    if (!s.length) { noData('chart_extremes', `Aucun jour extrême détecté pour ${city}.`); return; }
+    const usesCityFallback = city === '__all__' && s.some(row => row.city && row.city !== '__all__' && row.city !== 'all' && row.city !== 'France');
+    document.getElementById('lbl_city_ext').textContent = usesCityFallback ? 'France (extrêmes observés par ville)' : cityLabel(city);
+    if (!s.length) {
+      const scopeLabel = city === '__all__' ? 'au niveau national' : `pour ${cityLabel(city)}`;
+      noData('chart_extremes', `Aucun jour extrême détecté ${scopeLabel}.`);
+      return;
+    }
     const colorMap = { 'Canicule':'#ef4444', 'Grand froid':'#58a6ff' };
     const el = document.getElementById('chart_extremes');
     if (el) el.innerHTML = '';
     Plotly.newPlot('chart_extremes', [{
       x: s.map(r => r.date), y: s.map(r => r.temp), mode:'markers', type:'scatter',
       marker:{ size:9, color: s.map(r => colorMap[r.type] || '#8b949e'), opacity:.85, line:{ width:1, color:'rgba(0,0,0,0.3)' } },
-      text: s.map(r => `${r.type} — ${r.date}`),
+      text: s.map(r => `${r.city && r.city !== '__all__' && r.city !== 'all' ? `${r.city} — ` : ''}${r.type} — ${r.date}`),
       hovertemplate:'<b>%{text}</b><br>%{y:.1f} °C<extra></extra>',
     }], {
       ...LAYOUT, yaxis:{ ...LAYOUT.yaxis, title:'Température (°C)' },
@@ -374,7 +403,7 @@ async function drawVis() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     const p = d.points || [];
-    if (!p.length) { noData('chart_vis', `Pas de données visibilité pour ${city}.`); return; }
+    if (!p.length) { noData('chart_vis', `Pas de données visibilité pour ${cityLabel(city)}.`); return; }
     const el = document.getElementById('chart_vis');
     if (el) el.innerHTML = '';
     Plotly.newPlot('chart_vis', [{
@@ -392,6 +421,7 @@ async function drawVis() {
 
 function refreshAll() {
   _initialLoadDone = true;
+  refreshSummary();
   drawSeasonal(); drawTemp(); drawExtremes(); drawVis();
 }
 
@@ -402,6 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('climate_start').value = past.toISOString().slice(0,10);
 
   await loadCities();
+  refreshSummary();
   drawSeasonal();
   drawTemp(); drawExtremes(); drawVis();
 

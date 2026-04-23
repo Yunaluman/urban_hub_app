@@ -6,6 +6,7 @@ app_name = 'dashboard_api'
 
 urlpatterns = [
     path('cities/', api_views.CitiesListView.as_view(), name='cities'),
+    path('summary/<str:page>/', api_views.DashboardPageSummaryView.as_view(), name='page-summary'),
     path('climate/temperature/', api_views.ClimateTemperatureView.as_view(), name='climate-temperature'),
     path('climate/seasonal/', api_views.ClimateSeasonalView.as_view(), name='climate-seasonal'),
     path('climate/extremes/', api_views.ClimateExtremesView.as_view(), name='climate-extremes'),

@@ -1,0 +1,28 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+  ".git",
+  "__pycache__",
+  ".venv",
+  "venv",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  "staticfiles",
+  "media",
+]
+
+[tool.ruff.lint]
+# Keep defaults, but align with Black where relevant.
+ignore = ["E203", "W503"]
+per-file-ignores = { "**/migrations/*.py" = ["E501"] }
+
+[tool.ruff.lint.flake8-quotes]
+# Prefer single quotes; don't fight Django or templates.
+inline-quotes = "single"
+
