@@ -40,14 +40,28 @@
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-diagram-3 me-1"></i>Réseaux</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-diagram-3 me-1"></i>Réseaux</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre de réseaux vélos ou opérateurs intégrés dans le système.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ network_count|default:"—" }}</div>
       <div class="kpi-sub">opérateurs connectés</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Snapshots</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-database me-1"></i>Snapshots</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre d’états observés des stations vélos enregistrés dans le temps.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ snapshot_count|default:"—" }}</div>
       <div class="kpi-sub">observations en base</div>
     </div>
@@ -99,7 +113,14 @@
 <!-- MAP -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-geo-alt me-1 text-success"></i>Carte des stations — taux d'utilisation</div>
+    <div class="chart-title">
+      <i class="bi bi-geo-alt me-1 text-success"></i>Carte des stations — taux d'utilisation
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Positionne les stations et colore leur état moyen selon leur taux d’utilisation ou leur criticité.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <div class="d-flex gap-2 align-items-center" style="font-size:.68rem;">
       <span style="color:#ef4444;">■</span> <span class="text-secondary">Critique</span>
       <span style="color:#f59e0b;">■</span> <span class="text-secondary">&lt; 50%</span>
@@ -114,7 +135,14 @@
 
 <!-- HOURLY CHART -->
 <div class="chart-panel mb-3">
-  <div class="chart-title"><i class="bi bi-clock me-1 text-info"></i>Utilisation horaire moyenne</div>
+  <div class="chart-title">
+    <i class="bi bi-clock me-1 text-info"></i>Utilisation horaire moyenne
+    <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Compare par heure le nombre moyen de vélos disponibles et de places libres.">
+      <i class="bi bi-info-circle"></i>
+    </button>
+  </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Vélos disponibles et places libres en moyenne par heure de la journée (historique complet de la ville)</div>
   <div id="chart_hourly" class="chart-placeholder">
     <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
@@ -127,6 +155,11 @@
     <div class="chart-title">
       <i class="bi bi-bar-chart-steps me-1 text-danger"></i>Stations les plus sous-dotées
       <span class="crit-badge" id="crit_count_badge"></span>
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Classe les stations les moins bien dotées selon le seuil choisi pour repérer les points de tension.">
+        <i class="bi bi-info-circle"></i>
+      </button>
     </div>
     <small class="text-secondary" id="lbl_crit_thresh"></small>
   </div>
@@ -188,13 +221,11 @@ async function loadCities() {
     const d = await r.json();
     const sel = document.getElementById('mob_city');
     sel.innerHTML = '';
-    // Option "toutes villes" (agrégation nationale)
-    const allOpt = document.createElement('option');
-    allOpt.value = '__all__';
-    allOpt.textContent = 'Toutes les villes';
-    sel.appendChild(allOpt);
-    (d.cities || ['Paris']).forEach(c => {
-      const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    (d.cities || ['__all__', 'Paris']).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c === '__all__' ? 'Toutes les villes' : c;
+      sel.appendChild(o);
     });
   } catch {}
 }
@@ -202,6 +233,7 @@ async function loadCities() {
 async function refresh() {
   const city = document.getElementById('mob_city').value;
   const threshold = parseFloat(document.getElementById('mob_thresh').value);
+  let preloadH = null;
   document.getElementById('mob_thresh_val').textContent = threshold;
 
   const lbl = document.getElementById('lbl_crit_thresh');
@@ -215,14 +247,14 @@ async function refresh() {
     const _isFirst = !_initialLoadDone;
     const preloadStations = _isFirst && _preload('preload-mob-stations');
     const preloadCrit = _isFirst && _preload('preload-mob-critical');
-    const preloadH = _isFirst && _preload('preload-mob-hourly');
+    preloadH = _isFirst && _preload('preload-mob-hourly');
     _initialLoadDone = true;
 
-    if (preloadStations && preloadStations.length) {
+    if (city === '__all__' && preloadStations && preloadStations.length) {
       stations = preloadStations;
       crit = preloadCrit || [];
     } else {
-      const cityParam = city === '__all__' ? '' : city;
+      const cityParam = city;
       const [rsStations, rsCrit] = await Promise.all([
         fetch(`/api/dashboard/mobility/stations/?city=${encodeURIComponent(cityParam)}`),
         fetch(`/api/dashboard/mobility/critical/?city=${encodeURIComponent(cityParam)}&threshold=${threshold}`),
@@ -265,12 +297,12 @@ async function refresh() {
     return u < threshold ? '#ef4444' : (u < 50 ? '#f59e0b' : '#22c55e');
   });
   const sizes = stations.map(s => Math.max(6, Math.min(18, 6 + (s.total_slots || 10) / 4)));
-  const elMap = document.getElementById('chart_map');
-  if (elMap) elMap.innerHTML = '';
-  Plotly.newPlot('chart_map', [{
+      const elMap = document.getElementById('chart_map');
+      if (elMap) elMap.innerHTML = '';
+      Plotly.newPlot('chart_map', [{
     type:'scattergeo', mode:'markers', lat, lon,
     marker:{ size:sizes, color:colors, opacity:.8, line:{ width:0.5, color:'rgba(0,0,0,.3)' } },
-    text: stations.map(s => `<b>${s.station_name}</b><br>Util.: ${(s.util_rate||0).toFixed(1)}%<br>Vélos: ${s.bikes_avg?.toFixed(0) ?? '—'}`),
+    text: stations.map(s => `<b>${s.station_name}</b><br>Util.: ${(s.util_rate||0).toFixed(1)}%<br>Vélos: ${s.bikes_available ?? '—'}`),
     hovertemplate:'%{text}<extra></extra>',
   }], {
     ...LAYOUT,
@@ -292,10 +324,10 @@ async function refresh() {
   // Hourly chart
   try {
     let h;
-    if (preloadH && preloadH.length) {
+    if (city === '__all__' && preloadH && preloadH.length) {
       h = preloadH;
     } else {
-      const cityParam = city === '__all__' ? '' : city;
+      const cityParam = city;
       const rh = await fetch(`/api/dashboard/mobility/hourly/?city=${encodeURIComponent(cityParam)}`);
       const dh = await rh.json();
       h = dh.hourly || [];

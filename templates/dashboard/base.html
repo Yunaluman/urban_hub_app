@@ -253,46 +253,6 @@
       height: 320px;
     }
 
-    /* ---- Help / explanations offcanvas (dashboard) ---- */
-    #dashboardHelp.offcanvas {
-      --bs-offcanvas-width: min(420px, 100vw);
-      border-left: 1px solid var(--sidebar-border);
-    }
-
-    #dashboardHelp .offcanvas-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #f0f6fc;
-    }
-
-    #dashboardHelp .help-section {
-      margin-bottom: 1.25rem;
-    }
-
-    #dashboardHelp .help-section:last-child {
-      margin-bottom: 0;
-    }
-
-    #dashboardHelp .help-section h6 {
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #8b949e;
-      margin-bottom: 0.4rem;
-    }
-
-    #dashboardHelp .help-section p {
-      font-size: 0.82rem;
-      line-height: 1.45;
-      color: #c9d1d9;
-      margin-bottom: 0;
-    }
-
-    #dashboardHelp .help-section p + p {
-      margin-top: 0.5rem;
-    }
-
     /* ---- Compact stat cards when help text is in drawer ---- */
     .stat-card .card-value {
       margin-bottom: 0.15rem;
@@ -418,6 +378,13 @@
 
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+        new bootstrap.Tooltip(el);
+      });
+    });
+  </script>
 
   {% block extra_js %}{% endblock %}
 </body>

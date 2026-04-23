@@ -10,12 +10,15 @@ import django  # noqa: E402
 from celery import Celery  # noqa: E402
 from celery.schedules import crontab  # noqa: E402
 
+from apps.utils.tasking import register_task_telemetry  # noqa: E402
+
 
 django.setup()
 
 app = Celery('urbanhub')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
+register_task_telemetry()
 
 # ─── Schedules ────────────────────────────────────────────────────
 app.conf.beat_schedule = {
