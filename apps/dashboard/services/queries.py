@@ -141,6 +141,27 @@ def _city_q(field: str, city: str) -> Q:
     return Q(**{f'{field}__iexact': city}) | Q(**{f'{field}__icontains': city})
 
 
+def get_dashboard_page_summary(page: str, city: str = '') -> dict[str, Any] | None:
+    """Lit le résumé Gold léger d'une page dashboard pour une ville donnée."""
+    try:
+        from apps.serving.models import GoldDashboardPageSummary
+    except Exception:
+        return None
+
+    city_key = _gold_city_key(city)
+    qs = GoldDashboardPageSummary.objects.filter(page=page)
+    if city_key == GOLD_NATIONAL_CITY_KEY:
+        obj = qs.filter(city_key=GOLD_NATIONAL_CITY_KEY).order_by('-as_of').first()
+    else:
+        obj = qs.filter(city_key__iexact=city_key).order_by('-as_of').first()
+    if obj is None:
+        return None
+
+    payload = dict(obj.payload_json or {})
+    payload['as_of'] = obj.as_of.isoformat() if obj.as_of else None
+    return payload
+
+
 # ─── Météo ───────────────────────────────────────────────────────────────────
 
 def get_weather_stations() -> pd.DataFrame:
@@ -403,21 +424,55 @@ def get_extreme_days(std_factor: float = 2.5, city: str | None = None) -> pd.Dat
                 as_of=m_as_of,
                 std_factor=std_factor,
             )
-            if city is not None and str(city).strip():
-                qs = qs.filter(_gold_city_key_filter('city_key', str(city)))
-            df = pd.DataFrame(
-                list(qs.values('city_key', 'day', 'temp', 'event_type'))
-            )
-            if not df.empty:
-                return df.rename(
-                    columns={
-                        'city_key': 'city',
-                        'day': 'date',
-                        'event_type': 'type',
-                    }
+            if ck == GOLD_NATIONAL_CITY_KEY:
+                national_df = pd.DataFrame(
+                    list(
+                        qs.filter(
+                            Q(city_key=GOLD_NATIONAL_CITY_KEY) | Q(city_key='')
+                        ).values('city_key', 'day', 'temp', 'event_type')
+                    )
                 )
+                if not national_df.empty:
+                    return national_df.rename(
+                        columns={
+                            'city_key': 'city',
+                            'day': 'date',
+                            'event_type': 'type',
+                        }
+                    )
+                city_df = pd.DataFrame(
+                    list(
+                        qs.exclude(city_key__in=[GOLD_NATIONAL_CITY_KEY, '']).values(
+                            'city_key', 'day', 'temp', 'event_type'
+                        )
+                    )
+                )
+                if not city_df.empty:
+                    return city_df.rename(
+                        columns={
+                            'city_key': 'city',
+                            'day': 'date',
+                            'event_type': 'type',
+                        }
+                    )
+            elif city is not None and str(city).strip():
+                qs = qs.filter(_gold_city_key_filter('city_key', str(city)))
+                df = pd.DataFrame(
+                    list(qs.values('city_key', 'day', 'temp', 'event_type'))
+                )
+                if not df.empty:
+                    return df.rename(
+                        columns={
+                            'city_key': 'city',
+                            'day': 'date',
+                            'event_type': 'type',
+                        }
+                    )
     if ck == GOLD_NATIONAL_CITY_KEY:
-        return _orm_national_extreme_days(std_factor)
+        national_df = _orm_national_extreme_days(std_factor)
+        if not national_df.empty:
+            return national_df
+        return _orm_extreme_days(std_factor)
     df = _orm_extreme_days(std_factor)
     if city and not df.empty and 'city' in df.columns:
         cnorm = str(city).strip().lower()
@@ -522,12 +577,15 @@ def _orm_pollution_daily_pattern(city: str, pollutant: str) -> pd.DataFrame:
     return pd.DataFrame(list(qs))
 
 
-def _orm_pollution_hotspots(pollutant: str, *, include_sensor_id: bool = False) -> pd.DataFrame:
+def _orm_pollution_hotspots(
+    pollutant: str, city: str = '', *, include_sensor_id: bool = False
+) -> pd.DataFrame:
     fields = ['sensor__city', 'sensor__latitude', 'sensor__longitude']
     if include_sensor_id:
         fields.append('sensor__sensor_id')
     qs = (
         PollutionMeasurement.objects.filter(pollutant=pollutant)
+        .filter(_city_q('sensor__city', city))
         .values(*fields)
         .annotate(
             value_avg=Avg('value'),
@@ -611,7 +669,9 @@ def get_pollution_daily_pattern(city: str, pollutant: str) -> pd.DataFrame:
     return _orm_pollution_daily_pattern(city, pollutant)
 
 
-def get_pollution_hotspots(pollutant: str, *, include_sensor_id: bool = False) -> pd.DataFrame:
+def get_pollution_hotspots(
+    pollutant: str, city: str = '', *, include_sensor_id: bool = False
+) -> pd.DataFrame:
     """
     Moyenne et pourcentage d'exceedance par capteur/ville.
 
@@ -626,14 +686,16 @@ def get_pollution_hotspots(pollutant: str, *, include_sensor_id: bool = False) -
 
         m_as_of = GoldAirHotspot.objects.aggregate(m=Max('as_of'))['m']
         if m_as_of:
-            qs = (
-                GoldAirHotspot.objects.filter(as_of=m_as_of, pollutant=pollutant)
-                .values('city', 'latitude', 'longitude', 'value_avg', 'pct_exceedance')
-            )
+            qs = GoldAirHotspot.objects.filter(as_of=m_as_of, pollutant=pollutant)
+            if city and _gold_city_key(city) != GOLD_NATIONAL_CITY_KEY:
+                qs = qs.filter(_city_q('city', city))
+            qs = qs.values('city', 'latitude', 'longitude', 'value_avg', 'pct_exceedance')
             df = pd.DataFrame(list(qs))
             if not df.empty:
                 return df
-    return _orm_pollution_hotspots(pollutant, include_sensor_id=include_sensor_id)
+    return _orm_pollution_hotspots(
+        pollutant, city, include_sensor_id=include_sensor_id
+    )
 
 
 def get_who_exceedance_days(city: str) -> pd.DataFrame:
@@ -993,7 +1055,7 @@ def correlation_matrix_for_cross(df: pd.DataFrame) -> dict[str, Any]:
     ]
     available = [
         c for c in cols_corr
-        if c in df.columns and df[c].notna().sum() > 10
+        if c in df.columns and df[c].notna().sum() >= 6
     ]
     if len(available) < 2:
         return {'columns': [], 'z': [], 'labels': []}
