@@ -1,22 +1,60 @@
+# Environment / secrets
 .env
+.env.*
+!.env.example
+.envrc
+*.secret
+*.secrets.*
+secrets.*
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Python
 __pycache__/
 *.py[cod]
 *.sqlite3
+.python-version
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs / OS
 *.log
 .DS_Store
+Thumbs.db
+
+# Django / app runtime
 staticfiles/
 media/
-notebooks/.ipynb_checkpoints/
 data/lake/
-.claude-flow/
-.swarm/
+
+# Notebooks
+notebooks/.ipynb_checkpoints/
+
+# JS
 node_modules/
+
+# Docker local overrides
+docker-compose.override.yml
+
+# IDE / local tooling
+.vscode/
+.idea/
 
 # AI & agent config
 .claude/
+.claude-flow/
+.swarm/
 CLAUDE.md
 .mcp.json
 .cursor
-
-# Python tools
-.mypy_cache/
