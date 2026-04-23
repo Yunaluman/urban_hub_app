@@ -64,15 +64,91 @@ services:
         condition: service_healthy
     restart: "no"
 
-  # ─── Celery Worker (traitement async) ────────────────────────────
-  celery-worker:
+  # ─── Celery Worker Bronze (collecte externe, I/O réseau) ─────────
+  celery-worker-bronze:
     build: .
-    command: celery -A urbanhub worker -l info -c 4
+    command: celery -A urbanhub worker -l info -n bronze@%h -Q bronze,default -c 4
     volumes:
       - .:/app
     env_file: .env
     environment:
       # Surcharge du .env (localhost) : dans le réseau Docker les services s'appellent ainsi
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ─── Celery Worker Silver (normalisation / parquet traité) ───────
+  celery-worker-silver:
+    build: .
+    command: celery -A urbanhub worker -l info -n silver@%h -Q silver -c 2
+    volumes:
+      - .:/app
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ─── Celery Worker Postgres (upserts / batch DB) ─────────────────
+  celery-worker-postgres:
+    build: .
+    command: celery -A urbanhub worker -l info -n postgres@%h -Q ingestion_postgres -c 1
+    volumes:
+      - .:/app
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ─── Celery Worker Gold (agrégats dashboard) ─────────────────────
+  celery-worker-gold:
+    build: .
+    command: celery -A urbanhub worker -l info -n gold@%h -Q gold -c 1
+    volumes:
+      - .:/app
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ─── Celery Worker Analysis (analyses croisées) ──────────────────
+  celery-worker-analysis:
+    build: .
+    command: celery -A urbanhub worker -l info -n analysis@%h -Q analysis -c 1
+    volumes:
+      - .:/app
+    env_file: .env
+    environment:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: http://minio:9000

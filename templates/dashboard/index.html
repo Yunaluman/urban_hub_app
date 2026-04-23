@@ -5,7 +5,7 @@
 {% block nav_dashboard %}active{% endblock %}
 
 {% block topbar_city_badge %}
-<small class="text-secondary">{{ selected_city }}, France</small>
+<small class="text-secondary">{{ selected_city_label }}, France</small>
 {% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
   <div>
     <h4 class="mb-0 fw-bold" style="color:#f0f6fc;">Dashboard</h4>
-    <small class="text-secondary">Vue d'ensemble des données Smart City &mdash; {{ selected_city }}</small>
+    <small class="text-secondary">Vue d'ensemble des données Smart City &mdash; {{ selected_city_label }}</small>
   </div>
   <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
 
@@ -32,23 +32,13 @@
         title="Filtrer par ville"
       >
         {% for city in available_cities %}
-          <option value="{{ city }}"{% if city == selected_city %} selected{% endif %}>{{ city }}</option>
+          <option value="{{ city }}"{% if city == selected_city %} selected{% endif %}>
+            {% if city == '__all__' %}Toutes les villes{% else %}{{ city }}{% endif %}
+          </option>
         {% endfor %}
       </select>
     </form>
 
-    <button
-      type="button"
-      class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 dashboard-help-trigger"
-      data-bs-toggle="offcanvas"
-      data-bs-target="#dashboardHelp"
-      data-help-target="help-dashboard-intro"
-      aria-controls="dashboardHelp"
-      title="Afficher les explications sur les indicateurs"
-    >
-      <i class="bi bi-info-circle"></i>
-      Explications
-    </button>
     {% if last_update %}
       <small class="text-secondary">
         <i class="bi bi-clock me-1"></i>
@@ -73,12 +63,9 @@
             <button
               type="button"
               class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#dashboardHelp"
-              data-help-target="help-stations-meteo"
-              title="Explication"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              title="Nombre de points de mesure météo suivis dans la base pour la ville ou l’agrégat sélectionné."
               aria-label="Explication sur les stations météo"
-              aria-controls="dashboardHelp"
             >
               <i class="bi bi-info-circle"></i>
             </button>
@@ -107,12 +94,9 @@
             <button
               type="button"
               class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#dashboardHelp"
-              data-help-target="help-reseaux-velos"
-              title="Explication"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              title="Nombre de réseaux vélos exploités dans le périmètre affiché, pas le nombre total de vélos."
               aria-label="Explication sur les réseaux vélos"
-              aria-controls="dashboardHelp"
             >
               <i class="bi bi-info-circle"></i>
             </button>
@@ -141,12 +125,9 @@
             <button
               type="button"
               class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#dashboardHelp"
-              data-help-target="help-capteurs-pollution"
-              title="Explication"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              title="Nombre de capteurs qualité de l’air utilisés pour calculer les indicateurs affichés."
               aria-label="Explication sur les capteurs pollution"
-              aria-controls="dashboardHelp"
             >
               <i class="bi bi-info-circle"></i>
             </button>
@@ -175,12 +156,9 @@
             <button
               type="button"
               class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#dashboardHelp"
-              data-help-target="help-derniere-maj"
-              title="Explication"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              title="Somme des enregistrements météo, pollution et mobilité disponibles pour le périmètre sélectionné."
               aria-label="Explication sur le total observations"
-              aria-controls="dashboardHelp"
             >
               <i class="bi bi-info-circle"></i>
             </button>
@@ -214,12 +192,9 @@
         <button
           type="button"
           class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#dashboardHelp"
-          data-help-target="help-chart-meteo"
-          title="Explication"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Moyenne des températures par mois sur l’historique disponible pour le territoire affiché."
           aria-label="Explication sur le graphique météo"
-          aria-controls="dashboardHelp"
         >
           <i class="bi bi-info-circle"></i>
         </button>
@@ -243,12 +218,9 @@
         <button
           type="button"
           class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#dashboardHelp"
-          data-help-target="help-chart-mobilite"
-          title="Explication"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre moyen de vélos disponibles par heure pour repérer les pics et creux d’usage."
           aria-label="Explication sur le graphique mobilité"
-          aria-controls="dashboardHelp"
         >
           <i class="bi bi-info-circle"></i>
         </button>
@@ -272,12 +244,9 @@
         <button
           type="button"
           class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger flex-shrink-0 mt-n1"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#dashboardHelp"
-          data-help-target="help-chart-pollution"
-          title="Explication"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Profil horaire moyen des concentrations par polluant pour mettre en évidence les variations journalières."
           aria-label="Explication sur le graphique pollution"
-          aria-controls="dashboardHelp"
         >
           <i class="bi bi-info-circle"></i>
         </button>
@@ -292,86 +261,6 @@
   </div>
 
 </div><!-- /charts row -->
-
-<!-- ==================== VOLET EXPLICATIONS (droit) ==================== -->
-<div
-  class="offcanvas offcanvas-end text-bg-dark"
-  tabindex="-1"
-  id="dashboardHelp"
-  aria-labelledby="dashboardHelpLabel"
->
-  <div class="offcanvas-header border-bottom border-secondary">
-    <h5 class="offcanvas-title" id="dashboardHelpLabel">Explications</h5>
-    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
-  </div>
-  <div class="offcanvas-body">
-    <div class="dashboard-intro mb-4" id="help-dashboard-intro">
-      <strong class="text-secondary d-block mb-2">À quoi sert ce tableau&nbsp;?</strong>
-      Il regroupe des <strong class="text-body">indicateurs de suivi</strong> pour le territoire couvert (ici Paris)&nbsp;:
-      nombre de sources de données connectées, puis trois graphiques sur l’historique en base.
-      Ces chiffres <strong class="text-body">ne sont pas des objectifs politiques ni des normes légales</strong>&nbsp;;
-      ils reflètent ce que l’application a pu collecter et agréger à la dernière synchronisation.
-    </div>
-
-    <div class="help-section" id="help-stations-meteo">
-      <h6>Stations météo</h6>
-      <p>
-        Nombre de <strong>points de mesure météo</strong> suivis dans la base (réseau couvert par l’appli), pas la température du jour.
-      </p>
-    </div>
-    <div class="help-section" id="help-reseaux-velos">
-      <h6>Réseaux vélos</h6>
-      <p>
-        Nombre de <strong>réseaux de vélos en libre-service</strong> intégrés (opérateurs / zones), pas le nombre total de vélos physiques.
-      </p>
-    </div>
-    <div class="help-section" id="help-capteurs-pollution">
-      <h6>Capteurs pollution</h6>
-      <p>
-        Nombre de <strong>capteurs qualité de l’air</strong> suivis ; plus le réseau est dense, plus les cartes et moyennes sont représentatives localement.
-      </p>
-    </div>
-    <div class="help-section" id="help-derniere-maj">
-      <h6>Total observations</h6>
-      <p>
-        Somme de toutes les observations en base&nbsp;: météo + pollution + snapshots vélos. Indicateur de la richesse du jeu de données collecté.
-      </p>
-      <p>
-        La date affichée est l'horodatage le plus récent parmi les trois sources (synchro la plus fraîche dans le système).
-      </p>
-    </div>
-
-    <hr class="border-secondary my-4" />
-
-    <div class="help-section" id="help-chart-meteo">
-      <h6>Météo — Température moyenne mensuelle</h6>
-      <p>
-        Moyenne des températures enregistrées en base, <strong>par mois</strong> (historique disponible). Utile pour comparer les saisons, pas pour la météo instantanée.
-      </p>
-      <p class="text-secondary small mt-2 mb-0">
-        Axe horizontal&nbsp;: mois (année-mois). Axe vertical&nbsp;: degrés Celsius (°C). Chaque barre = moyenne sur toutes les observations de ce mois dans la base.
-      </p>
-    </div>
-    <div class="help-section" id="help-chart-mobilite">
-      <h6>Mobilité — Vélos disponibles par heure</h6>
-      <p>
-        <strong>Moyenne</strong> du nombre de vélos signalés comme disponibles, regroupée par <strong>tranche horaire</strong> (0h–23h), sur l’historique en base. Indique les habitudes d’usage (pics creux), pas la capacité totale du parc.
-      </p>
-      <p class="text-secondary small mt-2 mb-0">
-        Axe horizontal&nbsp;: heure de la journée. Axe vertical&nbsp;: nombre moyen de vélos disponibles (toutes stations confondues selon les données chargées). Les heures sans mesure apparaissent comme un trou dans la courbe.
-      </p>
-    </div>
-    <div class="help-section" id="help-chart-pollution">
-      <h6>Pollution — Variation journalière par polluant</h6>
-      <p>
-        Concentration moyenne dans l’air par <strong>heure de la journée</strong> (toutes mesures agrégées), pour chaque polluant (ex. PM2.5, PM10, O₃). Unité&nbsp;: <strong>µg/m³</strong> (microgrammes par mètre cube). Une courbe absente = pas de mesure exploitable pour ce polluant dans la période.
-      </p>
-      <p class="text-secondary small mt-2 mb-0">
-        Les valeurs physiquement impossibles (ex. concentrations &lt; 0, souvent erreur capteur) sont ignorées sur le graphique. Ce graphique aide à repérer des <strong>profils typiques</strong> (trafic, journée) ; il ne remplace pas un indice officiel ou réglementaire.
-      </p>
-    </div>
-  </div>
-</div>
 
 {% endblock %}
 
@@ -626,49 +515,10 @@ async function loadPollutionChart() {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Bootstrap all charts on DOM ready                                   */
-/* ------------------------------------------------------------------ */
-function scrollDashboardHelpTo(targetId) {
-  const el = document.getElementById(targetId);
-  if (!el) return;
-  el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-}
-
-function initDashboardHelpPanel() {
-  const helpPanel = document.getElementById('dashboardHelp');
-  if (!helpPanel) return;
-
-  helpPanel.addEventListener('shown.bs.offcanvas', () => {
-    const id = helpPanel.dataset.pendingScroll;
-    if (id) {
-      scrollDashboardHelpTo(id);
-      delete helpPanel.dataset.pendingScroll;
-    }
-  });
-
-  document.addEventListener(
-    'click',
-    (e) => {
-      const btn = e.target.closest('.dashboard-help-trigger');
-      if (!btn) return;
-      const id = btn.getAttribute('data-help-target');
-      if (id) helpPanel.dataset.pendingScroll = id;
-      if (helpPanel.classList.contains('show')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if (id) scrollDashboardHelpTo(id);
-      }
-    },
-    true,
-  );
-}
-
 function startDashboardPage() {
   loadMeteoChart();
   loadMobilityChart();
   loadPollutionChart();
-  initDashboardHelpPanel();
 }
 
 if (document.readyState === 'loading') {

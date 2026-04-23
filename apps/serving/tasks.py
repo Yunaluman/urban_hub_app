@@ -8,7 +8,7 @@ Les lectures ORM brutes utilisent les helpers ``_orm_*`` de ``queries`` pour
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone as dt_tz
 
 import pandas as pd
 from celery import chain, shared_task
@@ -149,7 +149,8 @@ def publish_gold_mobility():
     return {'stations': len(objs), 'hourly_city_keys': len(hourly_frames)}
 
 
-@shared_task(name='apps.serving.tasks.publish_gold_air')
+@shared_task(name='apps.serving.tasks.publish_gold_air',
+             soft_time_limit=3600, time_limit=3700)
 def publish_gold_air():
     """
     Publication Gold Air — 4 GROUP BY globaux au lieu de N×P requêtes par ville/polluant.
@@ -159,14 +160,17 @@ def publish_gold_air():
     """
     as_of = timezone.now()
     ts = as_of.strftime('%Y%m%d_%H%M%S')
-    start = '2022-01-01'
-    end = date.today().isoformat()
+    # UTC range equivalent to '2022-01-01'..'today' in Europe/Paris.
+    # Using timestamp__gte/lte (not __date__) so Postgres can use the btree index
+    # on timestamp instead of applying AT TIME ZONE on every row (seq scan).
+    start_utc = datetime(2021, 12, 31, 22, 0, 0, tzinfo=dt_tz.utc)  # 2h before Paris 2022-01-01
+    end_utc = datetime.now(tz=dt_tz.utc) + timedelta(hours=2)
 
     # ── 1. Séries journalières — 1 GROUP BY (city, pollutant, day) ─────────────
     logger.info('gold_air: séries journalières...')
     df_series = pd.DataFrame(list(
         PollutionMeasurement.objects
-        .filter(timestamp__date__gte=start, timestamp__date__lte=end,
+        .filter(timestamp__gte=start_utc, timestamp__lte=end_utc,
                 pollutant__in=POLLUTANTS)
         .annotate(day=TruncDay('timestamp'))
         .values('sensor__city', 'pollutant', 'day')
@@ -339,7 +343,8 @@ def publish_gold_air():
     return {'series': n_series, 'hourly': n_hourly, 'hotspots': n_hotspot, 'who': n_who}
 
 
-@shared_task(name='apps.serving.tasks.publish_gold_climate')
+@shared_task(name='apps.serving.tasks.publish_gold_climate',
+             soft_time_limit=1800, time_limit=1900)
 def publish_gold_climate():
     as_of = timezone.now()
     ts = as_of.strftime('%Y%m%d_%H%M%S')

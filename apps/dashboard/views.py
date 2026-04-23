@@ -16,6 +16,7 @@ from apps.pollution.models import PollutionMeasurement, PollutionSensor
 logger = logging.getLogger(__name__)
 
 _CITY_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,60}$")
+ALL_CITIES = '__all__'
 
 
 def _is_reasonable_city_name(s: str) -> bool:
@@ -51,6 +52,15 @@ def _jsonable(df):
     if df is None or df.empty:
         return []
     return svc.jsonable_records(df)
+
+
+def _city_filter_value(selected_city: str) -> str:
+    """`__all__` côté UI devient filtre vide côté requêtes."""
+    return '' if selected_city == ALL_CITIES else selected_city
+
+
+def _city_display_label(selected_city: str) -> str:
+    return 'Toutes les villes' if selected_city == ALL_CITIES else selected_city
 
 
 class DashboardView(TemplateView):
@@ -96,17 +106,19 @@ class DashboardView(TemplateView):
                     cities.add(mapped)
 
         out = sorted({str(c).strip() for c in cities if str(c).strip() and _is_reasonable_city_name(str(c))})
-        return out
+        return [ALL_CITIES] + out
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
         # --- City filter ---
         available_cities = self._get_available_cities()
-        default_city = available_cities[0] if available_cities else 'Paris'
+        default_city = ALL_CITIES
         selected_city = self.request.GET.get('city', default_city)
         if selected_city not in available_cities:
             selected_city = default_city
+        filter_city = _city_filter_value(selected_city)
+        selected_city_label = _city_display_label(selected_city)
 
         # Cache the heavy aggregates per city (counts + preloads).
         cache_key = f"dashboard:index:context:{selected_city}"
@@ -120,15 +132,27 @@ class DashboardView(TemplateView):
                 {
                     'available_cities': available_cities,
                     'selected_city': selected_city,
+                    'selected_city_label': selected_city_label,
                 }
             )
             return {**context, **cached}
 
         # --- Filtered querysets ---
-        meteo_obs_qs = WeatherObservation.objects.filter(station__city=selected_city)
-        mobility_snap_qs = BikeSnapshot.objects.filter(station__network__city=selected_city)
-        # Pollution city field is messy (addresses, codes) → icontains for best coverage
-        poll_meas_qs = PollutionMeasurement.objects.filter(sensor__city__icontains=selected_city)
+        if filter_city:
+            meteo_obs_qs = WeatherObservation.objects.filter(station__city=filter_city)
+            mobility_snap_qs = BikeSnapshot.objects.filter(station__network__city=filter_city)
+            # Pollution city field is messy (addresses, codes) → icontains for best coverage
+            poll_meas_qs = PollutionMeasurement.objects.filter(sensor__city__icontains=filter_city)
+            context['meteo_station_count'] = WeatherStation.objects.filter(city=filter_city).count()
+            context['bike_network_count'] = BikeNetwork.objects.filter(city=filter_city).count()
+            context['pollution_sensor_count'] = PollutionSensor.objects.filter(city__icontains=filter_city).count()
+        else:
+            meteo_obs_qs = WeatherObservation.objects.all()
+            mobility_snap_qs = BikeSnapshot.objects.all()
+            poll_meas_qs = PollutionMeasurement.objects.all()
+            context['meteo_station_count'] = WeatherStation.objects.count()
+            context['bike_network_count'] = BikeNetwork.objects.count()
+            context['pollution_sensor_count'] = PollutionSensor.objects.count()
 
         # --- Performance guardrails: limit preloaded aggregates to recent data ---
         # The detailed pages still allow full-period exploration via the API filters.
@@ -137,9 +161,6 @@ class DashboardView(TemplateView):
         recent_days_start = date(today.year - 1, 1, 1)   # 1 year for hourly profiles
 
         # --- Counts ---
-        context['meteo_station_count'] = WeatherStation.objects.filter(city=selected_city).count()
-        context['bike_network_count'] = BikeNetwork.objects.filter(city=selected_city).count()
-        context['pollution_sensor_count'] = PollutionSensor.objects.filter(city__icontains=selected_city).count()
         context['total_observations'] = (
             meteo_obs_qs.count()
             + poll_meas_qs.count()
@@ -160,7 +181,7 @@ class DashboardView(TemplateView):
         context['last_update'] = max(timestamps) if timestamps else None
 
         # --- Pre-load: meteo avg temperature by month ---
-        gold_meteo = _safe(lambda: svc.home_meteo_monthly_gold(selected_city))
+        gold_meteo = _safe(lambda: svc.home_meteo_monthly_gold(filter_city))
         if gold_meteo is not None:
             context['preload_meteo_monthly'] = gold_meteo
         else:
@@ -181,7 +202,7 @@ class DashboardView(TemplateView):
             ]
 
         # --- Pre-load: mobility hourly bike peaks ---
-        gold_mob = _safe(lambda: svc.home_mobility_hourly_gold(selected_city))
+        gold_mob = _safe(lambda: svc.home_mobility_hourly_gold(filter_city))
         if gold_mob is not None:
             context['preload_mobility_hourly'] = gold_mob
         else:
@@ -199,7 +220,7 @@ class DashboardView(TemplateView):
             ]
 
         # --- Pre-load: pollution daily variation ---
-        gold_poll = _safe(lambda: svc.home_pollution_variation_gold(selected_city))
+        gold_poll = _safe(lambda: svc.home_pollution_variation_gold(filter_city))
         if gold_poll is not None:
             context['preload_pollution_variation'] = gold_poll
         else:
@@ -239,6 +260,7 @@ class DashboardView(TemplateView):
 
         context['available_cities'] = available_cities
         context['selected_city'] = selected_city
+        context['selected_city_label'] = selected_city_label
         return context
 
 
@@ -278,11 +300,11 @@ class ClimatePageView(TemplateView):
         # --- Pre-load: seasonal chart (city-independent, always valid) ---
         context['preload_seasonal'] = _jsonable(_safe(svc.get_seasonal_stats))
 
-        # --- Pre-load: Paris temperature series (default view, last 3 years) ---
+        # --- Pre-load: agrégat national Gold par défaut (last 3 years) ---
         start = date(date.today().year - 3, 1, 1).isoformat()
         end = date.today().isoformat()
         context['preload_temp_series'] = _jsonable(
-            _safe(lambda: svc.get_temperature_series('Paris', start, end))
+            _safe(lambda: svc.get_temperature_series('', start, end))
         )
 
         to_cache = {
@@ -333,19 +355,19 @@ class AirPageView(TemplateView):
             lambda: PollutionMeasurement.objects.filter(anomaly_filter).count() if anomaly_filter else 0, 0
         )
 
-        # --- Pre-load: WHO exceedances for Paris ---
-        context['preload_who'] = _jsonable(_safe(lambda: svc.get_who_exceedance_days('Paris')))
+        # --- Pre-load: dépassements OMS agrégés nationaux ---
+        context['preload_who'] = _jsonable(_safe(lambda: svc.get_who_exceedance_days('')))
 
-        # --- Pre-load: PM2.5 series for Paris (last year) ---
+        # --- Pre-load: PM2.5 national (last year) ---
         start = date(date.today().year - 1, 1, 1).isoformat()
         end = date.today().isoformat()
         context['preload_air_series'] = _jsonable(
-            _safe(lambda: svc.get_pollution_series('Paris', 'pm25', start, end))
+            _safe(lambda: svc.get_pollution_series('', 'pm25', start, end))
         )
 
-        # --- Pre-load: PM2.5 hourly pattern for Paris ---
+        # --- Pre-load: PM2.5 national hourly pattern ---
         context['preload_air_hourly'] = _jsonable(
-            _safe(lambda: svc.get_pollution_daily_pattern('Paris', 'pm25'))
+            _safe(lambda: svc.get_pollution_daily_pattern('', 'pm25'))
         )
 
         to_cache = {
@@ -381,19 +403,19 @@ class MobilityPageView(TemplateView):
         context['snapshot_count'] = BikeSnapshot.objects.count()
         context['last_update'] = _last_update(BikeSnapshot)
 
-        # --- Pre-load: Paris hourly bike usage ---
+        # --- Pre-load: agrégat national hourly bike usage ---
         context['preload_mob_hourly'] = _jsonable(
-            _safe(lambda: svc.get_hourly_bike_usage('Paris'))
+            _safe(lambda: svc.get_hourly_bike_usage(''))
         )
 
-        # --- Pre-load: Paris stations ---
+        # --- Pre-load: stations agrégées nationales ---
         context['preload_mob_stations'] = _jsonable(
-            _safe(lambda: svc.get_bike_stations('Paris'))
+            _safe(lambda: svc.get_bike_stations(''))
         )
 
-        # --- Pre-load: Paris critical stations (default threshold 20%) ---
+        # --- Pre-load: stations critiques agrégées nationales (threshold 20%) ---
         context['preload_mob_critical'] = _jsonable(
-            _safe(lambda: svc.get_critical_stations('Paris', util_threshold=20.0))
+            _safe(lambda: svc.get_critical_stations('', util_threshold=20.0))
         )
 
         to_cache = {

@@ -45,14 +45,28 @@
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-broadcast me-1"></i>Capteurs</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-broadcast me-1"></i>Capteurs</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre de capteurs qualité de l’air suivis dans la base pour alimenter les agrégats et les cartes.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ sensor_count|default:"—" }}</div>
       <div class="kpi-sub">stations qualité air</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Mesures</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-database me-1"></i>Mesures</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre total de mesures de pollution stockées, toutes dates, villes et polluants confondus.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ measurement_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements en base</div>
     </div>
@@ -83,12 +97,15 @@
     <div class="col-md-3">
       <label class="form-label small text-secondary mb-1">Polluant</label>
       <select id="air_poll" class="form-select form-select-sm bg-dark text-light border-secondary">
-        <option value="pm25">PM2.5</option>
-        <option value="pm10">PM10</option>
-        <option value="no2">NO₂</option>
-        <option value="o3">O₃</option>
-        <option value="co">CO</option>
+        <option value="pm25">PM2.5 - Particules fines</option>
+        <option value="pm10">PM10 - Particules inhalables</option>
+        <option value="no2">NO₂ - Dioxyde d'azote</option>
+        <option value="o3">O₃ - Ozone</option>
+        <option value="co">CO - Monoxyde de carbone</option>
       </select>
+      <div class="text-secondary mt-1" style="font-size:.68rem;">
+        PM2.5 et PM10 = particules, NO₂ = trafic / combustion, O₃ = ozone, CO = monoxyde de carbone.
+      </div>
     </div>
     <div class="col-md-2">
       <label class="form-label small text-secondary mb-1">Début</label>
@@ -119,7 +136,14 @@
 <!-- SERIES CHART -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-graph-up me-1 text-purple" style="color:#bc8cff;"></i>Évolution journalière</div>
+    <div class="chart-title">
+      <i class="bi bi-graph-up me-1 text-purple" style="color:#bc8cff;"></i>Évolution journalière
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Suit la concentration moyenne et maximale du polluant choisi jour par jour, avec repères OMS et UE.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <span id="lbl_series_poll" class="poll-badge" style="background:rgba(139,92,246,.2);color:#bc8cff;"></span>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">
@@ -133,7 +157,14 @@
 <!-- HOURLY CHART -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-clock me-1 text-warning"></i>Profil horaire moyen</div>
+    <div class="chart-title">
+      <i class="bi bi-clock me-1 text-warning"></i>Profil horaire moyen
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Montre à quelles heures de la journée le polluant est en moyenne le plus élevé.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <span id="lbl_hourly_poll" class="poll-badge" style="background:rgba(249,115,22,.2);color:#f97316;"></span>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Concentration moyenne par heure de la journée (0 h – 23 h) — révèle les pics de trafic ou d'activité industrielle</div>
@@ -145,7 +176,14 @@
 <!-- HOTSPOTS MAP -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-geo-alt me-1 text-danger"></i>Hotspots géographiques</div>
+    <div class="chart-title">
+      <i class="bi bi-geo-alt me-1 text-danger"></i>Hotspots géographiques
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Localise les capteurs ou zones où les niveaux moyens du polluant sont relativement les plus élevés.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <small class="text-secondary">Rouge = dépassement seuil OMS</small>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Taille du cercle proportionnelle à la concentration relative. Survol pour détail par ville.</div>
@@ -227,7 +265,7 @@ async function loadWho() {
   box.innerHTML = '<div class="col-12"><div class="loading-overlay" style="min-height:60px;"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Calcul…</span></div></div>';
   try {
     let ex, who = {}, eu = {};
-    const preloaded = !_initialLoadDone && city === 'Paris' && _preload('preload-who');
+      const preloaded = !_initialLoadDone && city === '__all__' && _preload('preload-who');
     if (preloaded && preloaded.length) {
       ex = preloaded;
     } else {
@@ -273,7 +311,7 @@ async function drawSeries() {
   if (lbl) lbl.textContent = POLL_LABELS[pollutant] || pollutant.toUpperCase();
   try {
     let s, whoThresh = null, euThresh = null;
-    const preloaded = !_initialLoadDone && city === 'Paris' && pollutant === 'pm25' && _preload('preload-air-series');
+      const preloaded = !_initialLoadDone && city === '__all__' && pollutant === 'pm25' && _preload('preload-air-series');
     if (preloaded && preloaded.length) {
       s = preloaded;
     } else {
@@ -313,7 +351,7 @@ async function drawHourly() {
   if (lbl) lbl.textContent = POLL_LABELS[pollutant] || pollutant.toUpperCase();
   try {
     let h;
-    const preloaded = !_initialLoadDone && city === 'Paris' && pollutant === 'pm25' && _preload('preload-air-hourly');
+      const preloaded = !_initialLoadDone && city === '__all__' && pollutant === 'pm25' && _preload('preload-air-hourly');
     if (preloaded && preloaded.length) {
       h = preloaded;
     } else {

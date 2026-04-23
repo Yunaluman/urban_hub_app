@@ -18,6 +18,7 @@ from apps.dashboard.constants import EU_THRESHOLDS, POLLUTANTS, WHO_THRESHOLDS
 from apps.dashboard.services import queries as Q
 
 logger = logging.getLogger(__name__)
+ALL_CITIES = '__all__'
 
 
 def _parse_date(s: str | None, default: date) -> str:
@@ -45,6 +46,12 @@ def _cached_response(prefix: str, timeout_s: int, builder, **params):
     except Exception:
         pass
     return value
+
+
+def _request_city(request, *, default: str = ALL_CITIES) -> str:
+    raw = request.query_params.get('city', default)
+    city = str(raw).strip() if raw is not None else default
+    return '' if city == ALL_CITIES else city
 
 
 def _canonicalize_city(raw: str, canon: list[str]) -> str | None:
@@ -129,9 +136,8 @@ class CitiesListView(APIView):
 
             out = sorted({c.strip() for c in cities if str(c).strip() and _is_reasonable_city_name(str(c))})
             base = out or ['Paris']
-            if '__all__' not in base:
-                base = base + ['__all__']
-            return {'cities': base}
+            base = [c for c in base if c != ALL_CITIES]
+            return {'cities': [ALL_CITIES] + base}
 
         payload = _cached_response('cities', 300, _build)
         return Response(payload)
@@ -141,9 +147,7 @@ class ClimateTemperatureView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         start = _parse_date(
             request.query_params.get('start'), date(2020, 1, 1)
         )
@@ -192,9 +196,7 @@ class ClimateExtremesView(APIView):
             std = float(request.query_params.get('std_factor', '2.5'))
         except ValueError:
             std = 2.5
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         payload = _cached_response(
             'climate-extremes',
             600,
@@ -213,9 +215,7 @@ class ClimateVisibilityView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
 
         def _build():
             df = Q.get_meteo_visibility_corr(city)
@@ -236,9 +236,7 @@ class AirWhoView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         payload = _cached_response(
             'air-who',
             300,
@@ -256,9 +254,7 @@ class AirSeriesView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         pollutant = request.query_params.get('pollutant', 'pm25')
         if pollutant not in POLLUTANTS:
             pollutant = 'pm25'
@@ -287,9 +283,7 @@ class AirHourlyView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         pollutant = request.query_params.get('pollutant', 'pm25')
         if pollutant not in POLLUTANTS:
             pollutant = 'pm25'
@@ -333,9 +327,7 @@ class MobilityStationsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         payload = _cached_response(
             'mobility-stations',
             180,
@@ -349,9 +341,7 @@ class MobilityHourlyView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         payload = _cached_response(
             'mobility-hourly',
             300,
@@ -365,9 +355,7 @@ class MobilityCriticalView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = ''
+        city = _request_city(request)
         try:
             threshold = float(request.query_params.get('threshold', '20'))
         except ValueError:
@@ -386,9 +374,7 @@ class CrossAnalysisDataView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        city = request.query_params.get('city', 'Paris')
-        if city == '__all__':
-            city = 'Paris'
+        city = _request_city(request)
 
         def _build():
             df = Q.build_cross_analysis_dataframe(city)

@@ -39,28 +39,56 @@
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-broadcast me-1"></i>Stations météo</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-broadcast me-1"></i>Stations météo</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre de points de mesure météo suivis dans la base pour alimenter les graphiques climat.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ station_count|default:"—" }}</div>
       <div class="kpi-sub">points de mesure</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-database me-1"></i>Observations</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-database me-1"></i>Observations</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre total de mesures météo stockées en base, toutes dates et villes confondues.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ observation_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements en base</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-thermometer-high text-danger me-1"></i>Jours canicule</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-thermometer-high text-danger me-1"></i>Jours canicule</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre de jours où au moins une observation dépasse 35 °C dans l’historique chargé.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ preload_hot_days|default:"—" }}</div>
       <div class="kpi-sub">&gt; 35 °C (base entière)</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-thermometer-low text-info me-1"></i>Jours grand froid</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-thermometer-low text-info me-1"></i>Jours grand froid</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nombre de jours où au moins une observation descend sous -5 °C dans l’historique chargé.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ preload_cold_days|default:"—" }}</div>
       <div class="kpi-sub">&lt; -5 °C (base entière)</div>
     </div>
@@ -95,7 +123,14 @@
 <!-- TEMPERATURE CHART -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-thermometer-half me-1 text-warning"></i>Évolution de la température</div>
+    <div class="chart-title">
+      <i class="bi bi-thermometer-half me-1 text-warning"></i>Évolution de la température
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Série journalière min / moyenne / max sur la période sélectionnée pour la ville ou l’agrégat choisi.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <small class="text-secondary" id="lbl_city_temp"></small>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Min / Moyenne / Max journaliers sur la période sélectionnée</div>
@@ -106,7 +141,14 @@
 
 <!-- SEASONAL CHART -->
 <div class="chart-panel mb-3">
-  <div class="chart-title"><i class="bi bi-calendar3 me-1 text-info"></i>Profil saisonnier (toutes villes)</div>
+  <div class="chart-title">
+    <i class="bi bi-calendar3 me-1 text-info"></i>Profil saisonnier (toutes villes)
+    <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Compare la température moyenne mensuelle par ville sur l’historique disponible.">
+      <i class="bi bi-info-circle"></i>
+    </button>
+  </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Température moyenne par mois sur l'historique complet, par ville</div>
   <div id="chart_seasonal" class="chart-placeholder">
     <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
@@ -116,7 +158,14 @@
 <!-- EXTREMES CHART -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Jours extrêmes (canicule / grand froid)</div>
+    <div class="chart-title">
+      <i class="bi bi-exclamation-triangle me-1 text-danger"></i>Jours extrêmes (canicule / grand froid)
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Affiche les jours statistiquement atypiques selon le seuil d’écart-type retenu pour la ville choisie.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <small class="text-secondary" id="lbl_city_ext"></small>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Observations dépassant les seuils ±2.5σ sur la ville sélectionnée</div>
@@ -128,7 +177,14 @@
 <!-- VISIBILITY CHART -->
 <div class="chart-panel mb-3">
   <div class="d-flex align-items-center justify-content-between mb-1">
-    <div class="chart-title"><i class="bi bi-eye me-1 text-secondary"></i>Visibilité vs Température</div>
+    <div class="chart-title">
+      <i class="bi bi-eye me-1 text-secondary"></i>Visibilité vs Température
+      <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+        data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Nuage de points reliant température, visibilité, vent et précipitations pour repérer des co-variations locales.">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </div>
     <small class="text-secondary" id="lbl_city_vis"></small>
   </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Scatter — couleur = vitesse du vent (m/s). Corrélation locale entre température et visibilité.</div>
@@ -216,7 +272,7 @@ async function drawTemp() {
   document.getElementById('lbl_city_temp').textContent = cityLabel(city);
   try {
     let s;
-    const preloaded = !_initialLoadDone && _preload('preload-temp-series');
+    const preloaded = !_initialLoadDone && city === '__all__' && _preload('preload-temp-series');
     if (preloaded && preloaded.length) {
       s = preloaded;
     } else {
@@ -242,11 +298,11 @@ async function drawTemp() {
 
 async function drawSeasonal() {
   spinner('chart_seasonal');
-  const city = document.getElementById('climate_city').value || 'Paris';
+    const city = document.getElementById('climate_city').value || '__all__';
   try {
     const preloaded = _preload('preload-seasonal');
     let rows;
-    const usePreload = preloaded && preloaded.length && city === 'Paris';
+    const usePreload = preloaded && preloaded.length && city === '__all__';
     if (usePreload) {
       rows = preloaded;
     } else {
