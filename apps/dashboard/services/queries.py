@@ -9,6 +9,7 @@ consommée par api_views.py.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -62,6 +63,31 @@ def jsonable_records(df: pd.DataFrame) -> list[dict[str, Any]]:
                 row[k] = v
         out.append(row)
     return out
+
+
+def _normalize_daily_date_column(df: pd.DataFrame, column: str = 'date') -> pd.DataFrame:
+    """Normalise une clé journalière pandas/ORM vers un objet `date` homogène."""
+    if df.empty or column not in df.columns:
+        return df
+    out = df.copy()
+    out[column] = out[column].map(_coerce_to_local_date)
+    out = out.dropna(subset=[column])
+    return out
+
+
+def _coerce_to_local_date(value: Any) -> date | None:
+    """Convertit une valeur pandas/Python en `date` sans décaler les dates locales."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+
+    ts = pd.Timestamp(value)
+    if pd.isna(ts):
+        return None
+    if ts.tzinfo is not None:
+        return ts.tz_convert('Europe/Paris').date()
+    return ts.date()
 
 
 # ─── Expression réutilisable : taux d'utilisation vélos ──────────────────────
@@ -857,7 +883,7 @@ def _get_weather_daily(city: str) -> pd.DataFrame:
         )
         .order_by('date')
     )
-    return pd.DataFrame(list(qs))
+    return _normalize_daily_date_column(pd.DataFrame(list(qs)))
 
 
 def _get_pollution_daily(city: str) -> pd.DataFrame:
@@ -877,7 +903,7 @@ def _get_pollution_daily(city: str) -> pd.DataFrame:
         .reset_index()
     )
     pivot.columns.name = None
-    return pivot
+    return _normalize_daily_date_column(pivot)
 
 
 def _get_bike_daily(city: str) -> pd.DataFrame:
@@ -889,7 +915,7 @@ def _get_bike_daily(city: str) -> pd.DataFrame:
         .annotate(util_rate=Avg(_util_rate_expr()))
         .order_by('date')
     )
-    return pd.DataFrame(list(qs))
+    return _normalize_daily_date_column(pd.DataFrame(list(qs)))
 
 
 def _get_weather_daily_gold(city: str) -> pd.DataFrame:
@@ -905,7 +931,11 @@ def _get_weather_daily_gold(city: str) -> pd.DataFrame:
         .values('day', 'temp_avg')
     )
     df = pd.DataFrame(list(qs))
-    return pd.DataFrame() if df.empty else df.rename(columns={'day': 'date', 'temp_avg': 'temperature'})
+    if df.empty:
+        return pd.DataFrame()
+    return _normalize_daily_date_column(
+        df.rename(columns={'day': 'date', 'temp_avg': 'temperature'})
+    )
 
 
 def _get_pollution_daily_gold(city: str) -> pd.DataFrame:
@@ -924,7 +954,9 @@ def _get_pollution_daily_gold(city: str) -> pd.DataFrame:
         return df
     pivot = df.pivot_table(index='observation_date', columns='pollutant', values='value_avg').reset_index()
     pivot.columns.name = None
-    return pivot.rename(columns={'observation_date': 'date'})
+    return _normalize_daily_date_column(
+        pivot.rename(columns={'observation_date': 'date'})
+    )
 
 
 def build_cross_analysis_dataframe(city: str) -> pd.DataFrame:
@@ -933,9 +965,6 @@ def build_cross_analysis_dataframe(city: str) -> pd.DataFrame:
 
     Délègue aux trois helpers ORM privés au lieu de recalculer en SQL brut.
     """
-    if _gold_city_key(city or '') == GOLD_NATIONAL_CITY_KEY:
-        return pd.DataFrame()
-
     df_meteo = _get_weather_daily_gold(city) if _use_gold_climate_temp() else pd.DataFrame()
     if df_meteo.empty:
         df_meteo = _get_weather_daily(city)

@@ -39,21 +39,42 @@
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-4">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-cloud-sun me-1 text-info"></i>Obs. météo</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-cloud-sun me-1 text-info"></i>Obs. météo</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Volume total des observations météo disponibles pour construire les analyses croisées.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ meteo_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
   </div>
   <div class="col-6 col-md-4">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-wind me-1 text-danger"></i>Mesures pollution</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-wind me-1 text-danger"></i>Mesures pollution</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Volume total des mesures pollution utilisées pour les corrélations météo-air-mobilité.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ pollution_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
   </div>
   <div class="col-6 col-md-4">
     <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-bicycle me-1 text-warning"></i>Snapshots vélos</div>
+      <div class="kpi-lbl d-flex align-items-center gap-1">
+        <span><i class="bi bi-bicycle me-1 text-warning"></i>Snapshots vélos</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Volume total des observations mobilité disponibles pour être fusionnées avec météo et pollution.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="kpi-val">{{ mobility_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
@@ -83,7 +104,14 @@
 
 <!-- CORRELATION HEATMAP -->
 <div class="chart-panel mb-3">
-  <div class="chart-title"><i class="bi bi-grid-3x3-gap me-1 text-success"></i>Matrice de corrélation</div>
+  <div class="chart-title">
+    <i class="bi bi-grid-3x3-gap me-1 text-success"></i>Matrice de corrélation
+    <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Mesure la force de co-variation entre variables. Plus la valeur est proche de 1 ou -1, plus le lien observé est marqué.">
+      <i class="bi bi-info-circle"></i>
+    </button>
+  </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">
     Corrélation de Pearson entre variables journalières. Valeurs de −1 (inverse) à +1 (directe). &gt; 0.5 = corrélation notable.
   </div>
@@ -94,7 +122,14 @@
 
 <!-- TIMELINE -->
 <div class="chart-panel mb-3">
-  <div class="chart-title"><i class="bi bi-graph-up-arrow me-1 text-warning"></i>Timeline — Température &amp; PM2.5</div>
+  <div class="chart-title">
+    <i class="bi bi-graph-up-arrow me-1 text-warning"></i>Timeline — Température &amp; PM2.5
+    <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Compare l’évolution journalière de la température et des PM2.5 sur la même période.">
+      <i class="bi bi-info-circle"></i>
+    </button>
+  </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Double axe : température (°C, gauche) et PM2.5 (µg/m³, droite). Survol pour les valeurs.</div>
   <div id="chart_timeline" class="chart-placeholder">
     <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
@@ -103,7 +138,14 @@
 
 <!-- BIKES TIMELINE -->
 <div class="chart-panel mb-3">
-  <div class="chart-title"><i class="bi bi-bicycle me-1 text-warning"></i>Utilisation vélos (%) — par jour</div>
+  <div class="chart-title">
+    <i class="bi bi-bicycle me-1 text-warning"></i>Utilisation vélos (%) — par jour
+    <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Suit l’évolution journalière du taux moyen d’utilisation des stations vélos.">
+      <i class="bi bi-info-circle"></i>
+    </button>
+  </div>
   <div class="chart-subtitle text-secondary" style="font-size:.74rem;">Taux moyen d'utilisation des stations vélos de la ville sur la période disponible.</div>
   <div id="chart_bikes" class="chart-placeholder">
     <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary me-2"></span><span class="text-secondary small">Chargement…</span></div>
@@ -114,7 +156,14 @@
 <div class="row g-3 mb-3">
   <div class="col-md-6">
     <div class="chart-panel">
-      <div class="chart-title" style="font-size:.85rem;"><i class="bi bi-thermometer me-1 text-warning"></i>Température vs utilisation vélos</div>
+      <div class="chart-title" style="font-size:.85rem;">
+        <i class="bi bi-thermometer me-1 text-warning"></i>Température vs utilisation vélos
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nuage de points pour voir si les journées plus chaudes coïncident avec une utilisation vélo plus élevée.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="chart-subtitle text-secondary" style="font-size:.72rem;">Couleur = précipitations (mm). Tendance haussière attendue : plus il fait chaud, plus les vélos sont utilisés.</div>
       <div id="chart_sc1" class="chart-placeholder" style="min-height:280px;">
         <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary"></span></div>
@@ -123,7 +172,14 @@
   </div>
   <div class="col-md-6">
     <div class="chart-panel">
-      <div class="chart-title" style="font-size:.85rem;"><i class="bi bi-wind me-1 text-danger"></i>PM2.5 vs utilisation vélos</div>
+      <div class="chart-title" style="font-size:.85rem;">
+        <i class="bi bi-wind me-1 text-danger"></i>PM2.5 vs utilisation vélos
+        <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
+          data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Nuage de points pour voir si les pics de PM2.5 s’accompagnent d’une baisse de l’usage vélo.">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
       <div class="chart-subtitle text-secondary" style="font-size:.72rem;">Couleur = température (°C). Tendance baissière attendue : pics de pollution → moins de sorties vélo.</div>
       <div id="chart_sc2" class="chart-placeholder" style="min-height:280px;">
         <div class="loading-overlay"><span class="spinner-border spinner-border-sm text-secondary"></span></div>
@@ -178,8 +234,11 @@ async function loadCities() {
     const d = await r.json();
     const sel = document.getElementById('cross_city');
     sel.innerHTML = '';
-    (d.cities || ['Paris']).forEach(c => {
-      const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    (d.cities || ['__all__', 'Paris']).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c === '__all__' ? 'Toutes les villes' : c;
+      sel.appendChild(o);
     });
   } catch {}
 }
@@ -223,8 +282,9 @@ async function refresh() {
     const merged = d.merged || [];
 
     if (!merged.length) {
+      const cityLabel = city === '__all__' ? 'Toutes les villes' : city;
       ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(id =>
-        noData(id, `Données insuffisantes pour ${city}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
+        noData(id, `Données insuffisantes pour ${cityLabel}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
       );
       document.getElementById('insights_panel').style.display = 'none';
       return;

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from apps.utils.tasking import build_task_routes
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 # urban_hub_app/.env — Django & scripts sur l’hôte (localhost). Celery : surcharges dans docker-compose.
@@ -103,6 +104,11 @@ CELERY_TIMEZONE = 'Europe/Paris'
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = build_task_routes()
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_CREATE_MISSING_QUEUES = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 # ─── MinIO / S3 Storage ───────────────────────────────────────────
 AWS_ACCESS_KEY_ID = os.environ.get('MINIO_ROOT_USER', 'minioadmin')

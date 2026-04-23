@@ -9,11 +9,10 @@ from zipfile import BadZipFile, ZipFile
 import pandas as pd
 import requests
 from requests import exceptions as req_exc
-from celery import shared_task
-from django.db import transaction
+from celery import chain, shared_task
 
-from apps.pollution.models import PollutionMeasurement, PollutionSensor
-from apps.utils.lake import upload_bytes_to_lake, upload_to_lake
+from apps.utils.lake import download_from_lake, upload_bytes_to_lake, upload_to_lake
+from apps.pollution.persistence import upsert_eea_df, upsert_openaq_df
 
 logger = logging.getLogger(__name__)
 
@@ -89,21 +88,21 @@ def _fetch_latest(loc_id: int) -> list[dict]:
         return []
 
 
-@shared_task(bind=True, name='apps.pollution.tasks.collect_openaq', max_retries=3)
-def collect_openaq(self):
+@shared_task(bind=True, name='apps.pollution.tasks.collect_openaq_bronze', max_retries=3)
+def collect_openaq_bronze(self):
+    """Bronze : collecte les mesures OpenAQ France et archive la snapshot brute."""
     snapshot_ts = datetime.now(tz=timezone.utc)
     timestamp_str = snapshot_ts.strftime('%Y%m%d_%H%M%S')
 
     try:
         country_id = _get_france_country_id()
         if not country_id:
-            logger.error('Impossible de récupérer l\'ID pays France')
-            return {'records_processed': 0, 'timestamp': timestamp_str}
+            logger.error('ID pays France introuvable')
+            return None
 
         locations = _get_locations(country_id)
         logger.info('%d stations FR récupérées', len(locations))
 
-        # Build sensors_id → parameter name map
         sensors_map: dict[int, str] = {}
         for loc in locations:
             for sensor in loc.get('sensors', []):
@@ -111,7 +110,6 @@ def collect_openaq(self):
                 if p and sensor.get('id'):
                     sensors_map[sensor['id']] = p.lower()
 
-        # Fetch latest measurements per location
         all_records = []
         for loc in locations:
             for rec in _fetch_latest(loc['id']):
@@ -123,85 +121,10 @@ def collect_openaq(self):
         logger.info('%d mesures récupérées', len(all_records))
 
     except Exception as exc:
-        logger.exception('Erreur collecte OpenAQ')
+        logger.exception('Erreur collecte OpenAQ bronze')
         raise self.retry(exc=exc, countdown=60)
 
-    # ── Persist (bulk) ─────────────────────────────────────────────────────────
-    # Passe 1 : construire les dicts sensor et measurement sans toucher la DB
-    sensors_to_create: dict[str, dict] = {}
-    measurements_to_create: list[dict] = []
-
-    for rec in all_records:
-        param = sensors_map.get(rec.get('sensorsId'), '')
-        pollutant_key = POLLUTANT_MAP.get(param)
-        if not pollutant_key:
-            continue
-        loc = rec['_loc_data']
-        loc_id = rec['_location_id']
-        coords = rec.get('coordinates') or loc.get('coordinates') or {}
-        city = loc.get('locality') or loc.get('city') or loc.get('name') or ''
-        sensor_id = f"{loc_id}-{param}"
-        sensors_to_create[sensor_id] = {
-            'city': city,
-            'latitude': coords.get('latitude') or 0.0,
-            'longitude': coords.get('longitude') or 0.0,
-            'source': 'openaq',
-        }
-        dt_str = (rec.get('datetime') or {}).get('utc') or \
-                 (rec.get('period') or {}).get('datetimeTo', {}).get('utc')
-        if not dt_str:
-            continue
-        try:
-            ts = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-            value = float(rec.get('value') or 0)
-            unit = (rec.get('parameter') or {}).get('units', 'µg/m³')
-        except (TypeError, ValueError):
-            continue
-        measurements_to_create.append({
-            'sensor_id': sensor_id, 'timestamp': ts,
-            'pollutant': pollutant_key, 'value': value, 'unit': unit,
-        })
-
-    # Passe 2 : bulk upsert capteurs (2 requêtes)
-    with transaction.atomic():
-        PollutionSensor.objects.bulk_create(
-            [
-                PollutionSensor(sensor_id=sid, **data)
-                for sid, data in sensors_to_create.items()
-            ],
-            update_conflicts=True,
-            unique_fields=['sensor_id'],
-            update_fields=['city', 'latitude', 'longitude', 'source'],
-            batch_size=500,
-        )
-    sensor_map = {
-        s.sensor_id: s
-        for s in PollutionSensor.objects.filter(sensor_id__in=sensors_to_create.keys())
-    }
-
-    # Passe 3 : bulk upsert mesures (1 requête)
-    meas_objs = [
-        PollutionMeasurement(
-            sensor=sensor_map[m['sensor_id']],
-            timestamp=m['timestamp'],
-            pollutant=m['pollutant'],
-            value=m['value'],
-            unit=m['unit'],
-        )
-        for m in measurements_to_create
-        if m['sensor_id'] in sensor_map
-    ]
-    with transaction.atomic():
-        PollutionMeasurement.objects.bulk_create(
-            meas_objs,
-            update_conflicts=True,
-            unique_fields=['sensor', 'timestamp', 'pollutant'],
-            update_fields=['value', 'unit'],
-            batch_size=2000,
-        )
-    processed = len(meas_objs)
-
-    # ── Bronze : snapshot brut ──────────────────────────────────────────────
+    # Archive brute MinIO (sans _loc_data pour alléger)
     if all_records:
         try:
             df_raw = pd.DataFrame([
@@ -214,57 +137,106 @@ def collect_openaq(self):
                 path=f'pollution/openaq/openaq_{timestamp_str}.parquet',
             )
         except Exception as exc:
-            logger.error('Erreur upload Bronze MinIO: %s', exc)
+            logger.error('Bronze OpenAQ upload: %s', exc)
 
-    # ── Silver : données nettoyées et normalisées ────────────────────────────
-    silver_rows = []
+    # Pré-traitement : extraction des champs utiles pour Silver
+    processed: list[dict] = []
     for rec in all_records:
         param = sensors_map.get(rec.get('sensorsId'), '')
         pollutant_key = POLLUTANT_MAP.get(param)
         if not pollutant_key:
             continue
         loc = rec['_loc_data']
+        loc_id = rec['_location_id']
         coords = rec.get('coordinates') or loc.get('coordinates') or {}
+        city = loc.get('locality') or loc.get('city') or loc.get('name') or ''
         dt_str = (rec.get('datetime') or {}).get('utc') or \
                  (rec.get('period') or {}).get('datetimeTo', {}).get('utc')
         if not dt_str:
             continue
         try:
             value = float(rec.get('value') or 0)
+            unit = (rec.get('parameter') or {}).get('units', 'µg/m³')
         except (TypeError, ValueError):
             continue
-        silver_rows.append({
+        processed.append({
+            'sensor_id': f'{loc_id}-{param}',
+            'city': city,
+            'latitude': coords.get('latitude') or 0.0,
+            'longitude': coords.get('longitude') or 0.0,
             'timestamp': dt_str,
             'pollutant': pollutant_key,
             'value': value,
-            'unit': (rec.get('parameter') or {}).get('units', 'µg/m³'),
-            'city': (
-                loc.get('locality') or loc.get('city') or loc.get('name') or ''
-            ),
-            'latitude': coords.get('latitude') or 0.0,
-            'longitude': coords.get('longitude') or 0.0,
-            'source': 'openaq',
+            'unit': unit,
         })
 
-    if silver_rows:
-        try:
-            df_silver = pd.DataFrame(silver_rows)
-            df_silver['timestamp'] = pd.to_datetime(
-                df_silver['timestamp'], utc=True
-            )
-            df_silver = df_silver.drop_duplicates(
-                subset=['timestamp', 'pollutant', 'latitude', 'longitude']
-            )
-            upload_to_lake(
-                df=df_silver,
-                bucket='urbanhub-processed',
-                path=f'pollution/openaq/openaq_{timestamp_str}.parquet',
-            )
-        except Exception as exc:
-            logger.error('Erreur upload Silver MinIO: %s', exc)
+    logger.info('collect_openaq_bronze: %d mesures pré-traitées', len(processed))
+    return {'processed': processed, 'timestamp_str': timestamp_str}
 
-    logger.info('collect_openaq: %d mesures insérées', processed)
-    return {'records_processed': processed, 'timestamp': timestamp_str}
+
+@shared_task(bind=True, name='apps.pollution.tasks.collect_openaq_silver', max_retries=3)
+def collect_openaq_silver(self, bronze_result):
+    """Silver : nettoie et archive les mesures OpenAQ normalisées."""
+    if not bronze_result or not bronze_result.get('processed'):
+        logger.warning('collect_openaq_silver: pas de données bronze')
+        return {'records_processed': 0}
+
+    processed = bronze_result['processed']
+    timestamp_str = bronze_result['timestamp_str']
+    processed_path = f'pollution/openaq/openaq_{timestamp_str}.parquet'
+    records_processed = 0
+
+    try:
+        df_silver = pd.DataFrame(processed)
+        df_silver['timestamp'] = pd.to_datetime(df_silver['timestamp'], utc=True)
+        df_silver['source'] = 'openaq'
+        df_silver = df_silver.drop_duplicates(
+            subset=['timestamp', 'pollutant', 'latitude', 'longitude']
+        )
+        upload_to_lake(
+            df=df_silver,
+            bucket='urbanhub-processed',
+            path=processed_path,
+        )
+        records_processed = len(df_silver)
+    except Exception as exc:
+        logger.error('Silver OpenAQ upload: %s', exc)
+
+    logger.info('collect_openaq_silver: %d mesures normalisées', records_processed)
+    return {
+        'records_processed': records_processed,
+        'processed_path': processed_path if records_processed else '',
+        'timestamp_str': timestamp_str,
+    }
+
+
+@shared_task(bind=True, name='apps.pollution.tasks.ingest_openaq_postgres', max_retries=3)
+def ingest_openaq_postgres(self, silver_result):
+    """Postgres : upsert capteurs et mesures OpenAQ."""
+    if not silver_result or not silver_result.get('processed_path'):
+        logger.warning('ingest_openaq_postgres: pas de données silver')
+        return {'rows_upserted': 0}
+
+    try:
+        df_silver = download_from_lake('urbanhub-processed', silver_result['processed_path'])
+        count = upsert_openaq_df(df_silver)
+    except Exception as exc:
+        logger.error('PG upsert OpenAQ: %s', exc)
+        raise self.retry(exc=exc, countdown=60)
+
+    logger.info('ingest_openaq_postgres: %d mesures insérées', count)
+    return {'rows_upserted': count, 'timestamp_str': silver_result.get('timestamp_str', '')}
+
+
+@shared_task(name='apps.pollution.tasks.collect_openaq')
+def collect_openaq():
+    """Orchestre Bronze → Silver → Postgres pour OpenAQ."""
+    chain(
+        collect_openaq_bronze.s(),
+        collect_openaq_silver.s(),
+        ingest_openaq_postgres.s(),
+    ).apply_async()
+    return {'queued': True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -589,68 +561,6 @@ def _parse_eea_parquet_df(df: pd.DataFrame, city: str) -> pd.DataFrame:
     return out
 
 
-def _upsert_eea_df(df: pd.DataFrame) -> int:
-    """Upsert sensors + measurements from normalized EEA DF. Returns inserted/updated count."""
-    if df.empty:
-        return 0
-    samplingpoints = df['samplingpoint'].dropna().unique().tolist()
-    # Map samplingpoint -> city (use first seen; df already filtered by city window)
-    city_by_sp = (
-        df[['samplingpoint', 'city']]
-        .drop_duplicates()
-        .set_index('samplingpoint')['city']
-        .to_dict()
-    )
-    sensor_ids = [f'EEA-{sp}' for sp in samplingpoints]
-
-    with transaction.atomic():
-        PollutionSensor.objects.bulk_create(
-            [
-                PollutionSensor(
-                    sensor_id=f'EEA-{sp}',
-                    city=city_by_sp.get(sp, ''),
-                    latitude=None,
-                    longitude=None,
-                    source='eea',
-                )
-                for sp in samplingpoints
-            ],
-            ignore_conflicts=True,
-            batch_size=500,
-        )
-        sensors = {
-            s.sensor_id: s
-            for s in PollutionSensor.objects.filter(sensor_id__in=sensor_ids)
-        }
-
-        measurements = []
-        for rec in df.to_dict('records'):
-            sensor = sensors.get(f"EEA-{rec['samplingpoint']}")
-            if sensor is None:
-                continue
-            measurements.append(
-                PollutionMeasurement(
-                    sensor=sensor,
-                    timestamp=rec['timestamp'].to_pydatetime()
-                    if hasattr(rec['timestamp'], 'to_pydatetime')
-                    else rec['timestamp'],
-                    pollutant=rec['pollutant'],
-                    value=float(rec['value']),
-                    unit=str(rec.get('unit') or 'µg/m³'),
-                )
-            )
-
-        PollutionMeasurement.objects.bulk_create(
-            measurements,
-            update_conflicts=True,
-            unique_fields=['sensor', 'timestamp', 'pollutant'],
-            update_fields=['value', 'unit'],
-            batch_size=2000,
-        )
-
-    return len(measurements)
-
-
 @shared_task(bind=True, name='apps.pollution.tasks.fetch_eea_historical', max_retries=3)
 def fetch_eea_historical(
     self,
@@ -803,7 +713,7 @@ def fetch_eea_historical(
                         df_norm = _parse_eea_parquet_df(df_raw, city=(city or 'France'))
                         if df_norm.empty:
                             continue
-                        total_rows += _upsert_eea_df(df_norm)
+                        total_rows += upsert_eea_df(df_norm)
                         urls_ingested += 1
                     except Exception as exc:
                         logger.warning('EEA parquet url failed (%s): %s', u, exc)
@@ -861,7 +771,7 @@ def fetch_eea_historical(
                 logger.error('EEA silver upload failed: %s', exc)
 
             try:
-                up = _upsert_eea_df(df)
+                up = upsert_eea_df(df)
                 total_rows += up
                 logger.info(
                     'EEA upsert ok: city=%s dataset=%s window=%s..%s measurements=%d (total=%d)',
