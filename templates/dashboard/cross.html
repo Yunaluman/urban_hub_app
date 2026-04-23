@@ -301,6 +301,7 @@ async function refresh() {
     const merged = d.merged || [];
 
     if (!merged.length) {
+      const cityLabel = city === '__all__' ? 'Toutes les villes' : city;
       ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(id =>
         noData(id, `Données insuffisantes pour ${cityLabel(city)}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
       );
