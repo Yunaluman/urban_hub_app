@@ -29,11 +29,9 @@
     </h4>
     <small class="text-secondary">Stations vélos en libre-service — utilisation, disponibilité, zones critiques</small>
   </div>
-  {% if last_update %}
   <small class="text-secondary">
-    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+    <span class="status-dot"></span>Données au <strong id="mobility_last_update_val">{{ last_update|date:"d/m/Y H:i"|default:"—" }}</strong>
   </small>
-  {% endif %}
 </div>
 
 <!-- KPI CARDS (server-side) -->
@@ -48,7 +46,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ network_count|default:"—" }}</div>
+      <div class="kpi-val" id="mobility_kpi_network_count">{{ network_count|default:"—" }}</div>
       <div class="kpi-sub">opérateurs connectés</div>
     </div>
   </div>
@@ -62,7 +60,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ snapshot_count|default:"—" }}</div>
+      <div class="kpi-val" id="mobility_kpi_snapshot_count">{{ snapshot_count|default:"—" }}</div>
       <div class="kpi-sub">observations en base</div>
     </div>
   </div>
@@ -230,6 +228,29 @@ async function loadCities() {
   } catch {}
 }
 
+function formatDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('fr-FR', {
+    day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+}
+
+async function refreshSummary(city) {
+  const cityParam = city === '__all__' ? '__all__' : city;
+  try {
+    const r = await fetch(`/api/dashboard/summary/mobility/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json();
+    document.getElementById('mobility_kpi_network_count').textContent = s.network_count ?? '—';
+    document.getElementById('mobility_kpi_snapshot_count').textContent = s.snapshot_count ?? '—';
+    document.getElementById('mobility_last_update_val').textContent = formatDateTime(s.last_update);
+  } catch (_) {
+    // Keep server-rendered fallback values.
+  }
+}
+
 async function refresh() {
   const city = document.getElementById('mob_city').value;
   const threshold = parseFloat(document.getElementById('mob_thresh').value);
@@ -238,6 +259,7 @@ async function refresh() {
 
   const lbl = document.getElementById('lbl_crit_thresh');
   if (lbl) lbl.textContent = `Seuil : ${threshold}%`;
+  refreshSummary(city);
 
   spinner('chart_map'); spinner('chart_hourly'); spinner('chart_crit');
 
@@ -299,6 +321,76 @@ async function refresh() {
   const sizes = stations.map(s => Math.max(6, Math.min(18, 6 + (s.total_slots || 10) / 4)));
       const elMap = document.getElementById('chart_map');
       if (elMap) elMap.innerHTML = '';
+      const geo = city === '__all__'
+        ? {
+            scope:'europe',
+            projection:{ type:'natural earth', scale:4.3 },
+            center:{ lat:46.6, lon:2.4 },
+            bgcolor:'transparent',
+            showland:true,
+            landcolor:'#21262d',
+            showocean:true,
+            oceancolor:'#161b22',
+            showlakes:true,
+            lakecolor:'#0d1117',
+            showcoastlines:true,
+            coastlinecolor:'#4b5563',
+            coastlinewidth:1.1,
+            showcountries:true,
+            countrycolor:'#6b7280',
+            countrywidth:1.1,
+            showsubunits:true,
+            subunitcolor:'#525b68',
+            subunitwidth:1.2,
+            showframe:false
+          }
+        : (
+            stations.length === 1
+              ? {
+                  scope:'europe',
+                  projection:{ type:'natural earth', scale:7.5 },
+                  center:{ lat:lat[0], lon:lon[0] },
+                  bgcolor:'transparent',
+                  showland:true,
+                  landcolor:'#21262d',
+                  showocean:true,
+                  oceancolor:'#161b22',
+                  showlakes:true,
+                  lakecolor:'#0d1117',
+                  showcoastlines:true,
+                  coastlinecolor:'#4b5563',
+                  coastlinewidth:1.1,
+                  showcountries:true,
+                  countrycolor:'#6b7280',
+                  countrywidth:1.1,
+                  showsubunits:true,
+                  subunitcolor:'#525b68',
+                  subunitwidth:1.2,
+                  showframe:false
+                }
+              : {
+                  scope:'europe',
+                  projection:{ type:'natural earth' },
+                  fitbounds:'locations',
+                  bgcolor:'transparent',
+                  showland:true,
+                  landcolor:'#21262d',
+                  showocean:true,
+                  oceancolor:'#161b22',
+                  showlakes:true,
+                  lakecolor:'#0d1117',
+                  showcoastlines:true,
+                  coastlinecolor:'#4b5563',
+                  coastlinewidth:1.1,
+                  showcountries:true,
+                  countrycolor:'#6b7280',
+                  countrywidth:1.1,
+                  showsubunits:true,
+                  subunitcolor:'#525b68',
+                  subunitwidth:1.2,
+                  showframe:false
+                }
+          );
       Plotly.newPlot('chart_map', [{
     type:'scattergeo', mode:'markers', lat, lon,
     marker:{ size:sizes, color:colors, opacity:.8, line:{ width:0.5, color:'rgba(0,0,0,.3)' } },
@@ -306,18 +398,7 @@ async function refresh() {
     hovertemplate:'%{text}<extra></extra>',
   }], {
     ...LAYOUT,
-    geo:{
-      scope:'europe',
-      projection:{ type:'natural earth', scale: 4.3 },
-      center:{ lat:46.6, lon:2.4 },   // centre France
-      fitbounds:'locations',
-      bgcolor:'transparent',
-      showland:true,
-      landcolor:'#21262d',
-      showcoastlines:true,
-      coastlinecolor:'#30363d',
-      showframe:false
-    },
+    geo,
     margin:{ l:0, r:0, t:10, b:0 },
   }, CFG);
 

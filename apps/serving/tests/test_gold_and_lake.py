@@ -11,6 +11,7 @@ class ContractsModuleTests(SimpleTestCase):
 
         self.assertTrue(hasattr(models, 'GoldMobilityStationLatest'))
         self.assertTrue(hasattr(models, 'GoldAirSeriesDay'))
+        self.assertTrue(hasattr(models, 'GoldDashboardPageSummary'))
 
 
 class LakeReaderTests(SimpleTestCase):

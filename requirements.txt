@@ -44,3 +44,7 @@ ipykernel>=6.29,<7
 # Utilitaires
 python-decouple==3.8
 python-dotenv==1.0.*
+
+# Dev quality (lint/format) — Ruff replaces Flake8; Black is formatter.
+ruff>=0.6,<1
+black>=24.0,<26
