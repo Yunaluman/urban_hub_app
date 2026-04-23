@@ -54,7 +54,6 @@ def _request_city(request, *, default: str = ALL_CITIES) -> str:
     return '' if city == ALL_CITIES else city
 
 
-def _canonicalize_city(raw: str, canon: list[str]) -> str | None:
 def _is_reasonable_city_name(s: str) -> bool:
     return is_reasonable_city_name(s)
 
