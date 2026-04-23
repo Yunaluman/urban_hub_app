@@ -70,7 +70,11 @@ docker compose ps
 | `redis` | Broker Celery + cache Django | 6379 |
 | `minio` | Data Lake S3 (API / console) | 9000 / **9001** |
 | `migrate` | Migrations Django (one-shot) | — |
-| `celery-worker` | Traitement asynchrone des tâches | — |
+| `celery-worker-bronze` | Collecte externe + orchestration | — |
+| `celery-worker-silver` | Normalisation / Parquet Silver | — |
+| `celery-worker-postgres` | Upserts PostgreSQL / batch lourds | — |
+| `celery-worker-gold` | Publications Gold dashboard | — |
+| `celery-worker-analysis` | Analyses croisées | — |
 | `celery-beat` | Planificateur des collectes, analyses et publications Gold | — |
 | `flower` | Monitoring Celery | **5555** |
 | `pgweb` | Interface légère PostgreSQL | **8081** |
@@ -122,6 +126,11 @@ La collecte est entièrement gérée par **Celery Beat** dès que Docker est lan
 Le pipeline couvre l'ingestion, l'analyse croisée et la publication de jeux de données
 agrégés "Gold" pour le dashboard.
 
+Les workers Celery sont maintenant **spécialisés par charge** :
+`bronze` pour la collecte réseau, `silver` pour la normalisation, `ingestion_postgres`
+pour les écritures DB lourdes, `gold` pour les agrégats dashboard et `analysis`
+pour les corrélations croisées.
+
 | Tâche | Source | Fréquence |
 |-------|--------|-----------|
 | `fetch_openmeteo_live` | Open-Meteo (10 villes FR, 48 h glissantes) | Toutes les heures |
@@ -136,11 +145,21 @@ agrégés "Gold" pour le dashboard.
 
 Surveiller l'exécution des tâches sur **Flower** : http://localhost:5555
 
+Comparer les tâches les plus coûteuses observées :
+`python manage.py task_resource_report --days 7 --limit 10`
+
 ---
 
 ## 5. Dashboard territorial (Django)
 
 Servi par Django (templates Bootstrap + Plotly.js), API JSON sous `/api/dashboard/...`.
+
+### Comportement UI
+
+- Les vues dashboard démarrent par défaut sur **`Toutes les villes`** (`__all__`), c’est-à-dire l’agrégat national quand les tables Gold sont disponibles.
+- Le filtre ville permet ensuite de basculer sur un territoire précis sans changer la structure des graphiques.
+- Les explications sont désormais **locales à chaque carte / graphique** via l’icône `i` (tooltip), et non plus dans un panneau global.
+- L’analyse croisée peut aussi fonctionner sur l’agrégat national si les séries météo, pollution et mobilité se recouvrent suffisamment.
 
 | Module | URL |
 |--------|-----|
@@ -195,9 +214,9 @@ Sources de données
           │
           ▼
   Celery Beat + Workers  [Docker]
-    ├── ingestion météo      → WeatherObservation (DB) + MinIO raw/processed
-    ├── ingestion mobilité   → BikeSnapshot (DB) + MinIO raw/processed
-    ├── ingestion pollution  → PollutionMeasurement (DB) + MinIO raw/processed
+    ├── bronze               → collecte API / archives MinIO raw
+    ├── silver               → normalisation / Parquet MinIO processed
+    ├── ingestion_postgres   → WeatherObservation / BikeSnapshot / PollutionMeasurement
     ├── run_cross_analysis   → CrossAnalysisResult (DB) + MinIO analytics
     └── publish_gold_*       → tables Gold Postgres + Parquet Gold MinIO
           │
@@ -217,12 +236,34 @@ Sources de données
 |--------|---------|---------|
 | `raw` / bronze | MinIO | snapshots bruts des APIs externes |
 | `processed` / silver | MinIO | données nettoyées / normalisées |
-| OLTP | PostgreSQL | tables métier Django (`WeatherObservation`, `BikeSnapshot`, `PollutionMeasurement`, etc.) |
+| `ingestion_postgres` / OLTP | PostgreSQL | tables métier Django (`WeatherObservation`, `BikeSnapshot`, `PollutionMeasurement`, etc.) |
 | `gold` | PostgreSQL + MinIO analytics | agrégats servis rapidement au dashboard |
 
 Les endpoints dashboard peuvent lire soit les tables métier ORM, soit les tables Gold
 selon les flags `DASHBOARD_GOLD_MOBILITY`, `DASHBOARD_GOLD_AIR` et `DASHBOARD_GOLD_CLIMATE`
 dans `.env`.
+
+En pratique, l’expérience UI cible est :
+
+- arrivée sur l’agrégat **Gold national** ;
+- lecture rapide via KPI + graphiques ;
+- zoom local via le filtre ville ;
+- aide ponctuelle via les tooltips `i`.
+
+### Relance après refacto
+
+```bash
+docker compose down
+docker compose up -d --build
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000
+```
+
+Vérifications utiles :
+
+- `docker compose ps`
+- `python manage.py check`
+- `python manage.py task_resource_report --days 7 --limit 10`
 
 ---
 
