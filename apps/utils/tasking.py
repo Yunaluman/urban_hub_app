@@ -69,6 +69,9 @@ TASK_PROFILES: dict[str, TaskRuntimeProfile] = {
     'apps.serving.tasks.publish_gold_mobility': TaskRuntimeProfile('gold', TASK_QUEUE_GOLD, 'medium', 2),
     'apps.serving.tasks.publish_gold_air': TaskRuntimeProfile('gold', TASK_QUEUE_GOLD, 'heavy', 4),
     'apps.serving.tasks.publish_gold_climate': TaskRuntimeProfile('gold', TASK_QUEUE_GOLD, 'heavy', 3),
+    'apps.serving.tasks.publish_gold_dashboard_summaries': TaskRuntimeProfile(
+        'gold', TASK_QUEUE_GOLD, 'medium', 2
+    ),
     'apps.serving.tasks.publish_gold_all': DEFAULT_TASK_PROFILE,
 }
 

@@ -178,3 +178,21 @@ class GoldClimateVisibilitySample(models.Model):
 
     class Meta:
         db_table = 'gold_climate_visibility_sample'
+
+
+class GoldDashboardPageSummary(models.Model):
+    """Résumé léger par page et par ville pour alimenter rapidement les KPI UI."""
+
+    page = models.CharField(max_length=32, db_index=True)
+    city_key = models.CharField(max_length=100, db_index=True)
+    payload_json = models.JSONField(default=dict)
+    as_of = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = 'gold_dashboard_page_summary'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['page', 'city_key'],
+                name='uq_gold_dashboard_page_summary',
+            ),
+        ]
