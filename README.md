@@ -174,18 +174,6 @@ Servi par Django (templates Bootstrap + Plotly.js), API JSON sous `/api/dashboar
 | API métier | http://127.0.0.1:8000/api/mobility/ |
 | API métier | http://127.0.0.1:8000/api/pollution/ |
 | API analyse | http://127.0.0.1:8000/api/analysis/ |
-| API Urban Guide | http://127.0.0.1:8000/api/guide/ |
-
-### Urban Guide
-
-Le dépôt contient aussi un module "Urban Guide" exposé sous `/api/guide/` :
-
-| Endpoint | Rôle |
-|----------|------|
-| `/api/guide/urban-score/` | Score synthétique de qualité de journée urbaine |
-| `/api/guide/outfit/` | Conseils vestimentaires selon météo + pollution |
-| `/api/guide/activities/` | Suggestions d'activités selon météo + mobilité |
-| `/api/guide/dashboard-data/` | Payload agrégé pour une UI guide |
 
 ---
 
@@ -291,7 +279,7 @@ urban_hub_app/
 │   ├── pollution/          ← modèles, tâches OpenAQ + EEA, API
 │   ├── analysis/           ← corrélations croisées, API
 │   ├── serving/            ← publication Gold Postgres + MinIO
-│   ├── urban_guide/        ← score urbain, tenue, activités, événements
+│   ├── urban_guide/        ← module exploratoire en pause
 │   └── utils/
 │       ├── lake.py         ← client MinIO / Data Lake
 │       └── lake_readers.py ← lecture des derniers Parquet du lake
