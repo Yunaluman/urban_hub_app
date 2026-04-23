@@ -5,16 +5,89 @@
 
 {% block extra_css %}
 <style>
-  .kpi-mini { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:.75rem 1rem; }
-  .kpi-mini .kpi-val { font-size:1.4rem; font-weight:700; color:#f0f6fc; line-height:1.1; }
-  .kpi-mini .kpi-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:.2rem; }
-  .kpi-mini .kpi-sub { font-size:.68rem; color:#484f58; margin-top:.15rem; }
-  .who-card { border-radius:8px; padding:.7rem 1rem; }
-  .who-card.exceeded { background:rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.35); }
-  .who-card.ok { background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.25); }
-  .who-card .pollutant-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; color:#8b949e; }
-  .who-card .days-val { font-size:1.6rem; font-weight:700; }
-  .who-card .threshold-info { font-size:.68rem; color:#6e7681; margin-top:.2rem; }
+  .air-stat-card {
+    background:linear-gradient(180deg, rgba(22,27,34,1) 0%, rgba(19,24,31,1) 100%);
+    border:1px solid #21262d;
+    border-radius:10px;
+    padding:.95rem 1rem;
+    min-height:112px;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    gap:.75rem;
+    box-shadow:inset 0 1px 0 rgba(240,246,252,.02);
+  }
+  .air-stat-card--alert {
+    background:linear-gradient(180deg, rgba(73,25,31,.95) 0%, rgba(53,20,25,.98) 100%);
+    border-color:rgba(248,81,73,.45);
+  }
+  .air-stat-card--ok {
+    background:linear-gradient(180deg, rgba(24,53,39,.95) 0%, rgba(18,39,29,.98) 100%);
+    border-color:rgba(35,134,54,.4);
+  }
+  .air-stat-card__header {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:.65rem;
+  }
+  .air-stat-card__label {
+    display:flex;
+    align-items:center;
+    gap:.45rem;
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:#8b949e;
+    line-height:1.2;
+  }
+  .air-stat-card__icon {
+    font-size:.85rem;
+    line-height:1;
+    opacity:.95;
+  }
+  .air-stat-card__body {
+    display:flex;
+    flex-direction:column;
+    gap:.2rem;
+  }
+  .air-stat-card__value {
+    font-size:1.9rem;
+    font-weight:700;
+    color:#f0f6fc;
+    line-height:1;
+    margin:0;
+  }
+  .air-stat-card__value.is-alert { color:#ff7b72; }
+  .air-stat-card__meta {
+    font-size:.78rem;
+    color:#8b949e;
+    line-height:1.35;
+  }
+  .air-stat-card__note {
+    font-size:.68rem;
+    color:#6e7681;
+    line-height:1.4;
+  }
+  .air-stat-card .dashboard-help-trigger {
+    font-size:1.05rem;
+    line-height:1;
+    text-decoration:none;
+    opacity:.55;
+    transition:opacity 0.15s, color 0.15s;
+    min-width:1.75rem;
+    min-height:1.75rem;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .air-stat-card .dashboard-help-trigger > i { pointer-events:none; }
+  .air-stat-card .dashboard-help-trigger:hover,
+  .air-stat-card .dashboard-help-trigger:focus-visible {
+    opacity:1;
+    color:#2ea043 !important;
+  }
   .loading-overlay { display:flex; align-items:center; justify-content:center; height:100%; min-height:240px; }
   .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#238636; margin-right:.35rem; animation:pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -34,55 +107,77 @@
     </h4>
     <small class="text-secondary">Séries temporelles, seuils OMS/UE, hotspots géographiques</small>
   </div>
-  {% if last_update %}
   <small class="text-secondary">
-    <span class="status-dot"></span>Données au <strong>{{ last_update|date:"d/m/Y H:i" }}</strong>
+    <span class="status-dot"></span>Données au <strong id="air_last_update_val">{{ last_update|date:"d/m/Y H:i"|default:"—" }}</strong>
   </small>
-  {% endif %}
 </div>
 
 <!-- KPI CARDS (server-side) -->
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
-    <div class="kpi-mini">
-      <div class="kpi-lbl d-flex align-items-center gap-1">
-        <span><i class="bi bi-broadcast me-1"></i>Capteurs</span>
+    <div class="air-stat-card">
+      <div class="air-stat-card__header">
+        <div class="air-stat-card__label">
+          <i class="bi bi-broadcast air-stat-card__icon"></i>
+          <span>Capteurs</span>
+        </div>
         <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
           data-bs-toggle="tooltip" data-bs-placement="top"
           title="Nombre de capteurs qualité de l’air suivis dans la base pour alimenter les agrégats et les cartes.">
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ sensor_count|default:"—" }}</div>
-      <div class="kpi-sub">stations qualité air</div>
+      <div class="air-stat-card__body">
+        <div class="air-stat-card__value" id="air_kpi_sensor_count">{{ sensor_count|default:"—" }}</div>
+        <div class="air-stat-card__meta">stations qualité air</div>
+      </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="kpi-mini">
-      <div class="kpi-lbl d-flex align-items-center gap-1">
-        <span><i class="bi bi-database me-1"></i>Mesures</span>
+    <div class="air-stat-card">
+      <div class="air-stat-card__header">
+        <div class="air-stat-card__label">
+          <i class="bi bi-database air-stat-card__icon"></i>
+          <span>Mesures</span>
+        </div>
         <button type="button" class="btn btn-link btn-sm p-0 text-secondary dashboard-help-trigger"
           data-bs-toggle="tooltip" data-bs-placement="top"
           title="Nombre total de mesures de pollution stockées, toutes dates, villes et polluants confondus.">
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ measurement_count|default:"—" }}</div>
-      <div class="kpi-sub">enregistrements en base</div>
+      <div class="air-stat-card__body">
+        <div class="air-stat-card__value" id="air_kpi_measurement_count">{{ measurement_count|default:"—" }}</div>
+        <div class="air-stat-card__meta">enregistrements en base</div>
+      </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-bar-chart-line me-1 text-warning"></i>Polluants suivis</div>
-      <div class="kpi-val">5</div>
-      <div class="kpi-sub">PM2.5 PM10 NO₂ O₃ CO</div>
+    <div class="air-stat-card">
+      <div class="air-stat-card__header">
+        <div class="air-stat-card__label">
+          <i class="bi bi-bar-chart-line air-stat-card__icon text-warning"></i>
+          <span>Polluants suivis</span>
+        </div>
+      </div>
+      <div class="air-stat-card__body">
+        <div class="air-stat-card__value">5</div>
+        <div class="air-stat-card__meta">PM2.5 PM10 NO₂ O₃ CO</div>
+      </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="kpi-mini">
-      <div class="kpi-lbl"><i class="bi bi-exclamation-diamond me-1 text-danger"></i>Anomalies détectées</div>
-      <div class="kpi-val">{{ preload_anomaly_count|default:"—" }}</div>
-      <div class="kpi-sub">valeurs &gt; 2× moyenne</div>
+    <div class="air-stat-card">
+      <div class="air-stat-card__header">
+        <div class="air-stat-card__label">
+          <i class="bi bi-exclamation-diamond air-stat-card__icon text-danger"></i>
+          <span>Anomalies détectées</span>
+        </div>
+      </div>
+      <div class="air-stat-card__body">
+        <div class="air-stat-card__value" id="air_kpi_anomaly_count">{{ preload_anomaly_count|default:"—" }}</div>
+        <div class="air-stat-card__meta">valeurs &gt; 2× moyenne</div>
+      </div>
     </div>
   </div>
 </div>
@@ -244,6 +339,35 @@ function cityLabel(city) {
   return city === '__all__' ? 'France (agrégat national)' : city;
 }
 
+function hourLabel(hour) {
+  return `${String(hour).padStart(2, '0')}h`;
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('fr-FR', {
+    day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+}
+
+async function refreshSummary() {
+  const city = document.getElementById('air_city').value;
+  const cityParam = city === '__all__' ? '__all__' : city;
+  try {
+    const r = await fetch(`/api/dashboard/summary/air/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json();
+    document.getElementById('air_kpi_sensor_count').textContent = s.sensor_count ?? '—';
+    document.getElementById('air_kpi_measurement_count').textContent = s.measurement_count ?? '—';
+    document.getElementById('air_kpi_anomaly_count').textContent = s.anomaly_count ?? '—';
+    document.getElementById('air_last_update_val').textContent = formatDateTime(s.last_update);
+  } catch (_) {
+    // Keep server-rendered fallback values.
+  }
+}
+
 async function loadCities() {
   try {
     const r = await fetch('/api/dashboard/cities/');
@@ -277,9 +401,17 @@ async function loadWho() {
       eu = d.eu_thresholds || {};
     }
     if (!ex.length) {
-      box.innerHTML = `<div class="col-12"><div class="who-card ok d-flex align-items-center gap-2">
-        <i class="bi bi-check-circle-fill text-success fs-5"></i>
-        <span class="text-success small">Aucun dépassement OMS détecté pour <strong>${cityLabel(city)}</strong>.</span>
+      box.innerHTML = `<div class="col-12"><div class="air-stat-card air-stat-card--ok">
+        <div class="air-stat-card__header">
+          <div class="air-stat-card__label">
+            <i class="bi bi-check-circle-fill air-stat-card__icon text-success"></i>
+            <span>Seuils OMS</span>
+          </div>
+        </div>
+        <div class="air-stat-card__body">
+          <div class="air-stat-card__value text-success">OK</div>
+          <div class="air-stat-card__meta">Aucun dépassement détecté pour <strong>${cityLabel(city)}</strong>.</div>
+        </div>
       </div></div>`;
       return;
     }
@@ -288,11 +420,18 @@ async function loadWho() {
       const whoVal = who[row.pollutant] ? `OMS: ${who[row.pollutant]} µg/m³` : '';
       const euVal = eu[row.pollutant] ? `UE: ${eu[row.pollutant]} µg/m³` : '';
       return `<div class="col-6 col-md-3">
-        <div class="who-card exceeded">
-          <div class="pollutant-label">${pollLabel}</div>
-          <div class="days-val text-danger">${row.days_exceeded}</div>
-          <div class="threshold-info">jours dépassés</div>
-          <div class="threshold-info mt-1">${whoVal}${whoVal && euVal ? ' · ' : ''}${euVal}</div>
+        <div class="air-stat-card air-stat-card--alert">
+          <div class="air-stat-card__header">
+            <div class="air-stat-card__label">
+              <i class="bi bi-exclamation-triangle air-stat-card__icon text-danger"></i>
+              <span>${pollLabel}</span>
+            </div>
+          </div>
+          <div class="air-stat-card__body">
+            <div class="air-stat-card__value is-alert">${row.days_exceeded}</div>
+            <div class="air-stat-card__meta">jours dépassés</div>
+            <div class="air-stat-card__note">${whoVal}${whoVal && euVal ? ' · ' : ''}${euVal}</div>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -362,25 +501,73 @@ async function drawHourly() {
       h = d.hourly || [];
     }
     if (!h.length) { noData('chart_hourly', 'Pas de données horaires.'); return; }
-    const vals = h.map(r => r.value_avg);
-    const maxV = Math.max(...vals);
+    const byHour = new Map();
+    h.forEach(row => {
+      const hour = Number(row.hour);
+      const value = Number(row.value_avg);
+      if (Number.isFinite(hour) && hour >= 0 && hour <= 23) {
+        byHour.set(hour, Number.isFinite(value) ? value : null);
+      }
+    });
+    const hourly = Array.from({ length:24 }, (_, hour) => ({
+      hour,
+      value_avg: byHour.has(hour) ? byHour.get(hour) : null,
+    }));
+    const valid = hourly.filter(row => row.value_avg != null);
+    if (!valid.length) { noData('chart_hourly', 'Profil horaire indisponible pour cette sélection.'); return; }
+    const peak = valid.reduce((best, row) => row.value_avg > best.value_avg ? row : best, valid[0]);
     const el = document.getElementById('chart_hourly');
     if (el) el.innerHTML = '';
-    Plotly.newPlot('chart_hourly', [{
-      x: h.map(r => r.hour), y: vals, type:'bar',
-      marker:{ color: vals.map(v => `rgba(249,115,22,${0.3 + 0.7 * v / (maxV || 1)})`), line:{ color:'rgba(249,115,22,0.4)', width:0.5 } },
-      hovertemplate:'%{x}h → %{y:.2f} µg/m³<extra></extra>',
-    }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, title:'Heure', tickmode:'linear', tick0:0, dtick:2 }, yaxis:{ ...LAYOUT.yaxis, title:'µg/m³' }, showlegend:false }, CFG);
+    Plotly.newPlot('chart_hourly', [
+      {
+        x: hourly.map(row => row.hour),
+        y: hourly.map(row => row.value_avg),
+        type:'scatter',
+        mode:'lines+markers',
+        connectgaps:false,
+        line:{ color:'#f97316', width:3, shape:'spline', smoothing:0.45 },
+        marker:{ size:8, color:'#fb923c', line:{ width:1, color:'rgba(13,17,23,.75)' } },
+        fill:'tozeroy',
+        fillcolor:'rgba(249,115,22,0.12)',
+        hovertemplate:'%{x:.0f}h → %{y:.2f} µg/m³<extra></extra>',
+        name:'Concentration moyenne',
+      },
+      {
+        x:[peak.hour],
+        y:[peak.value_avg],
+        type:'scatter',
+        mode:'markers+text',
+        text:[`Pic ${hourLabel(peak.hour)}`],
+        textposition:'top center',
+        marker:{ size:11, color:'#f59e0b', symbol:'diamond', line:{ width:1, color:'rgba(13,17,23,.85)' } },
+        hovertemplate:`Pic ${hourLabel(peak.hour)} → %{y:.2f} µg/m³<extra></extra>`,
+        name:'Pic',
+      },
+    ], {
+      ...LAYOUT,
+      xaxis:{
+        ...LAYOUT.xaxis,
+        title:'Heure',
+        type:'linear',
+        range:[-0.5, 23.5],
+        tickvals:[0,2,4,6,8,10,12,14,16,18,20,22],
+        ticktext:['00h','02h','04h','06h','08h','10h','12h','14h','16h','18h','20h','22h'],
+      },
+      yaxis:{ ...LAYOUT.yaxis, title:'µg/m³' },
+      legend:{ orientation:'h', y:1.12, font:{ color:'#8b949e' } },
+    }, CFG);
   } catch (e) {
     showErr('chart_hourly', 'Erreur chargement profil horaire.', drawHourly);
   }
 }
 
 async function drawHot() {
+  const city = document.getElementById('air_city').value;
   const pollutant = document.getElementById('air_poll').value;
   spinner('chart_hot');
   try {
-    const r = await fetch(`/api/dashboard/air/hotspots/?pollutant=${encodeURIComponent(pollutant)}`);
+    const cityParam = city === '__all__' ? '__all__' : city;
+    const r = await fetch(`/api/dashboard/air/hotspots/?city=${encodeURIComponent(cityParam)}&pollutant=${encodeURIComponent(pollutant)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     const pts = d.hotspots || [];
@@ -391,6 +578,32 @@ async function drawHot() {
     const maxV = Math.max(...pts.map(p => p.value_avg), 1);
     const sizes = pts.map(p => Math.max(6, Math.min(28, (p.value_avg / maxV) * 28)));
     const colors = pts.map(p => p.value_avg > seuil ? '#ef4444' : '#22c55e');
+    const isLocalView = city !== '__all__';
+    const geo = {
+      scope:'europe',
+      projection: isLocalView && pts.length === 1
+        ? { type:'natural earth', scale:7.5 }
+        : { type:'natural earth' },
+      ...(isLocalView && pts.length === 1 ? { center:{ lat:lat[0], lon:lon[0] } } : {}),
+      ...(isLocalView && pts.length > 1 ? { fitbounds:'locations' } : {}),
+      showland:true,
+      landcolor:'#21262d',
+      showocean:true,
+      oceancolor:'#161b22',
+      showlakes:true,
+      lakecolor:'#0d1117',
+      showcoastlines:true,
+      coastlinecolor:'#4b5563',
+      coastlinewidth:1.1,
+      showcountries:true,
+      countrycolor:'#6b7280',
+      countrywidth:1.1,
+      showsubunits:true,
+      subunitcolor:'#525b68',
+      subunitwidth:1.2,
+      bgcolor:'transparent',
+      showframe:false,
+    };
     const el = document.getElementById('chart_hot');
     if (el) el.innerHTML = '';
     Plotly.newPlot('chart_hot', [{
@@ -400,7 +613,7 @@ async function drawHot() {
       hovertemplate:'%{text}<extra></extra>',
     }], {
       ...LAYOUT,
-      geo:{ scope:'europe', projection:{ type:'natural earth' }, showland:true, landcolor:'#21262d', showcoastlines:true, coastlinecolor:'#30363d', bgcolor:'transparent', showframe:false },
+      geo,
       margin:{ l:0, r:0, t:10, b:0 },
     }, CFG);
   } catch (e) {
@@ -410,6 +623,7 @@ async function drawHot() {
 
 function refresh() {
   _initialLoadDone = true;
+  refreshSummary();
   loadWho(); drawSeries(); drawHourly(); drawHot();
 }
 
@@ -420,6 +634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('air_start').value = past.toISOString().slice(0,10);
 
   await loadCities();
+  refreshSummary();
   loadWho(); drawSeries(); drawHourly(); drawHot();
 
   document.getElementById('btn_apply').addEventListener('click', refresh);

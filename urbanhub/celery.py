@@ -68,4 +68,8 @@ app.conf.beat_schedule = {
         'task': 'apps.serving.tasks.publish_gold_climate',
         'schedule': crontab(minute=25),
     },
+    'publish-gold-dashboard-summaries': {
+        'task': 'apps.serving.tasks.publish_gold_dashboard_summaries',
+        'schedule': 600.0,
+    },
 }

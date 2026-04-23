@@ -3,31 +3,21 @@ from collections import defaultdict
 from datetime import date
 
 from django.core.cache import cache
-import re
 from django.db.models import Avg, Count, Q
 from django.db.models.functions import ExtractHour
+from django.utils.dateparse import parse_datetime
 from django.views.generic import TemplateView
 
 from apps.dashboard.services import queries as svc
+from apps.dashboard.services.cities import ALL_CITIES, canonicalize_city, city_filter_value, is_reasonable_city_name
 from apps.meteo.models import WeatherObservation, WeatherStation
 from apps.mobility.models import BikeNetwork, BikeSnapshot
 from apps.pollution.models import PollutionMeasurement, PollutionSensor
 
 logger = logging.getLogger(__name__)
 
-_CITY_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,60}$")
-ALL_CITIES = '__all__'
-
-
 def _is_reasonable_city_name(s: str) -> bool:
-    if not s:
-        return False
-    s = str(s).strip()
-    if not s or ',' in s:
-        return False
-    if any(ch.isdigit() for ch in s):
-        return False
-    return bool(_CITY_RE.match(s))
+    return is_reasonable_city_name(s)
 
 
 def _last_update(model, field='timestamp'):
@@ -55,12 +45,20 @@ def _jsonable(df):
 
 
 def _city_filter_value(selected_city: str) -> str:
-    """`__all__` côté UI devient filtre vide côté requêtes."""
-    return '' if selected_city == ALL_CITIES else selected_city
+    return city_filter_value(selected_city)
 
 
 def _city_display_label(selected_city: str) -> str:
     return 'Toutes les villes' if selected_city == ALL_CITIES else selected_city
+
+
+def _summary_timestamp(summary: dict | None, key: str):
+    value = (summary or {}).get(key)
+    if not value:
+        return None
+    if isinstance(value, str):
+        return parse_datetime(value)
+    return value
 
 
 class DashboardView(TemplateView):
@@ -95,15 +93,12 @@ class DashboardView(TemplateView):
             .values_list('city', flat=True)
             .distinct()
         ):
-            s = str(raw).strip()
-            if not s:
+            raw_s = str(raw).strip()
+            if not raw_s:
                 continue
-            s_l = s.lower()
-            matches = [c for c in canonical if c.lower() in s_l]
-            if matches:
-                mapped = max(matches, key=len)
-                if _is_reasonable_city_name(mapped):
-                    cities.add(mapped)
+            mapped = canonicalize_city(raw_s, canonical)
+            if mapped and _is_reasonable_city_name(mapped):
+                cities.add(mapped)
 
         out = sorted({str(c).strip() for c in cities if str(c).strip() and _is_reasonable_city_name(str(c))})
         return [ALL_CITIES] + out
@@ -137,54 +132,72 @@ class DashboardView(TemplateView):
             )
             return {**context, **cached}
 
-        # --- Filtered querysets ---
-        if filter_city:
-            meteo_obs_qs = WeatherObservation.objects.filter(station__city=filter_city)
-            mobility_snap_qs = BikeSnapshot.objects.filter(station__network__city=filter_city)
-            # Pollution city field is messy (addresses, codes) → icontains for best coverage
-            poll_meas_qs = PollutionMeasurement.objects.filter(sensor__city__icontains=filter_city)
-            context['meteo_station_count'] = WeatherStation.objects.filter(city=filter_city).count()
-            context['bike_network_count'] = BikeNetwork.objects.filter(city=filter_city).count()
-            context['pollution_sensor_count'] = PollutionSensor.objects.filter(city__icontains=filter_city).count()
+        meteo_obs_qs = None
+        mobility_snap_qs = None
+        poll_meas_qs = None
+
+        def ensure_raw_querysets():
+            nonlocal meteo_obs_qs, mobility_snap_qs, poll_meas_qs
+            if meteo_obs_qs is not None:
+                return
+            if filter_city:
+                meteo_obs_qs = WeatherObservation.objects.filter(station__city=filter_city)
+                mobility_snap_qs = BikeSnapshot.objects.filter(station__network__city=filter_city)
+                poll_meas_qs = PollutionMeasurement.objects.filter(sensor__city__icontains=filter_city)
+            else:
+                meteo_obs_qs = WeatherObservation.objects.all()
+                mobility_snap_qs = BikeSnapshot.objects.all()
+                poll_meas_qs = PollutionMeasurement.objects.all()
+
+        summary = _safe(lambda: svc.get_dashboard_page_summary('home', filter_city))
+        if summary:
+            context['meteo_station_count'] = summary.get('meteo_station_count')
+            context['bike_network_count'] = summary.get('bike_network_count')
+            context['pollution_sensor_count'] = summary.get('pollution_sensor_count')
+            context['total_observations'] = summary.get('total_observations')
+            context['last_meteo_update'] = _summary_timestamp(summary, 'last_meteo_update')
+            context['last_mobility_update'] = _summary_timestamp(summary, 'last_mobility_update')
+            context['last_pollution_update'] = _summary_timestamp(summary, 'last_pollution_update')
+            context['last_update'] = _summary_timestamp(summary, 'last_update')
         else:
-            meteo_obs_qs = WeatherObservation.objects.all()
-            mobility_snap_qs = BikeSnapshot.objects.all()
-            poll_meas_qs = PollutionMeasurement.objects.all()
-            context['meteo_station_count'] = WeatherStation.objects.count()
-            context['bike_network_count'] = BikeNetwork.objects.count()
-            context['pollution_sensor_count'] = PollutionSensor.objects.count()
+            ensure_raw_querysets()
+            if filter_city:
+                context['meteo_station_count'] = WeatherStation.objects.filter(city=filter_city).count()
+                context['bike_network_count'] = BikeNetwork.objects.filter(city=filter_city).count()
+                context['pollution_sensor_count'] = PollutionSensor.objects.filter(city__icontains=filter_city).count()
+            else:
+                context['meteo_station_count'] = WeatherStation.objects.count()
+                context['bike_network_count'] = BikeNetwork.objects.count()
+                context['pollution_sensor_count'] = PollutionSensor.objects.count()
 
-        # --- Performance guardrails: limit preloaded aggregates to recent data ---
-        # The detailed pages still allow full-period exploration via the API filters.
+            context['total_observations'] = (
+                meteo_obs_qs.count()
+                + poll_meas_qs.count()
+                + mobility_snap_qs.count()
+            )
+
+            def _qs_last(qs):
+                return qs.order_by('-timestamp').values_list('timestamp', flat=True).first()
+
+            last_meteo = _safe(lambda: _qs_last(meteo_obs_qs))
+            last_mobility = _safe(lambda: _qs_last(mobility_snap_qs))
+            last_pollution = _safe(lambda: _qs_last(poll_meas_qs))
+            context['last_meteo_update'] = last_meteo
+            context['last_mobility_update'] = last_mobility
+            context['last_pollution_update'] = last_pollution
+            timestamps = [t for t in (last_meteo, last_mobility, last_pollution) if t]
+            context['last_update'] = max(timestamps) if timestamps else None
+
         today = date.today()
-        recent_year_start = date(today.year - 3, 1, 1)   # 3 years for monthly temps
-        recent_days_start = date(today.year - 1, 1, 1)   # 1 year for hourly profiles
-
-        # --- Counts ---
-        context['total_observations'] = (
-            meteo_obs_qs.count()
-            + poll_meas_qs.count()
-            + mobility_snap_qs.count()
-        )
-
-        # --- Last update timestamps ---
-        def _qs_last(qs):
-            return qs.order_by('-timestamp').values_list('timestamp', flat=True).first()
-
-        last_meteo = _safe(lambda: _qs_last(meteo_obs_qs))
-        last_mobility = _safe(lambda: _qs_last(mobility_snap_qs))
-        last_pollution = _safe(lambda: _qs_last(poll_meas_qs))
-        context['last_meteo_update'] = last_meteo
-        context['last_mobility_update'] = last_mobility
-        context['last_pollution_update'] = last_pollution
-        timestamps = [t for t in (last_meteo, last_mobility, last_pollution) if t]
-        context['last_update'] = max(timestamps) if timestamps else None
+        recent_year_start = date(today.year - 3, 1, 1)
+        recent_days_start = date(today.year - 1, 1, 1)
 
         # --- Pre-load: meteo avg temperature by month ---
         gold_meteo = _safe(lambda: svc.home_meteo_monthly_gold(filter_city))
         if gold_meteo is not None:
             context['preload_meteo_monthly'] = gold_meteo
         else:
+            ensure_raw_querysets()
             monthly = _safe(lambda: list(
                 meteo_obs_qs
                 .filter(timestamp__date__gte=recent_year_start)
@@ -206,6 +219,7 @@ class DashboardView(TemplateView):
         if gold_mob is not None:
             context['preload_mobility_hourly'] = gold_mob
         else:
+            ensure_raw_querysets()
             hourly_mob = _safe(lambda: list(
                 mobility_snap_qs
                 .filter(timestamp__date__gte=recent_days_start)
@@ -224,6 +238,7 @@ class DashboardView(TemplateView):
         if gold_poll is not None:
             context['preload_pollution_variation'] = gold_poll
         else:
+            ensure_raw_querysets()
             poll_rows = _safe(lambda: list(
                 poll_meas_qs
                 .filter(timestamp__date__gte=recent_days_start)
@@ -277,25 +292,31 @@ class ClimatePageView(TemplateView):
         if isinstance(cached, dict):
             return {**context, **cached}
 
-        context['station_count'] = WeatherStation.objects.count()
-        context['observation_count'] = WeatherObservation.objects.count()
-        context['last_update'] = _last_update(WeatherObservation)
-
-        # --- Pre-load: global KPIs (rendered server-side, no spinner) ---
-        context['preload_hot_days'] = _safe(lambda: (
-            WeatherObservation.objects
-            .filter(temperature__gt=35)
-            .values('timestamp__date')
-            .annotate(c=Count('id'))
-            .count()
-        ), 0)
-        context['preload_cold_days'] = _safe(lambda: (
-            WeatherObservation.objects
-            .filter(temperature__lt=-5)
-            .values('timestamp__date')
-            .annotate(c=Count('id'))
-            .count()
-        ), 0)
+        summary = _safe(lambda: svc.get_dashboard_page_summary('climate', ''))
+        if summary:
+            context['station_count'] = summary.get('station_count')
+            context['observation_count'] = summary.get('observation_count')
+            context['last_update'] = _summary_timestamp(summary, 'last_update')
+            context['preload_hot_days'] = summary.get('hot_days', 0)
+            context['preload_cold_days'] = summary.get('cold_days', 0)
+        else:
+            context['station_count'] = WeatherStation.objects.count()
+            context['observation_count'] = WeatherObservation.objects.count()
+            context['last_update'] = _last_update(WeatherObservation)
+            context['preload_hot_days'] = _safe(lambda: (
+                WeatherObservation.objects
+                .filter(temperature__gt=35)
+                .values('timestamp__date')
+                .annotate(c=Count('id'))
+                .count()
+            ), 0)
+            context['preload_cold_days'] = _safe(lambda: (
+                WeatherObservation.objects
+                .filter(temperature__lt=-5)
+                .values('timestamp__date')
+                .annotate(c=Count('id'))
+                .count()
+            ), 0)
 
         # --- Pre-load: seasonal chart (city-independent, always valid) ---
         context['preload_seasonal'] = _jsonable(_safe(svc.get_seasonal_stats))
@@ -336,24 +357,29 @@ class AirPageView(TemplateView):
         if isinstance(cached, dict):
             return {**context, **cached}
 
-        context['sensor_count'] = PollutionSensor.objects.count()
-        context['measurement_count'] = PollutionMeasurement.objects.count()
-        context['last_update'] = _last_update(PollutionMeasurement)
-
-        # --- Pre-load: anomaly count (rendered server-side) ---
-        daily_means = _safe(lambda: {
-            row['pollutant']: row['avg_val']
-            for row in PollutionMeasurement.objects
-            .values('pollutant')
-            .annotate(avg_val=Avg('value'))
-        }, {})
-        anomaly_filter = Q()
-        for poll, mean in (daily_means or {}).items():
-            if mean and mean > 0:
-                anomaly_filter |= Q(pollutant=poll, value__gt=2 * mean)
-        context['preload_anomaly_count'] = _safe(
-            lambda: PollutionMeasurement.objects.filter(anomaly_filter).count() if anomaly_filter else 0, 0
-        )
+        summary = _safe(lambda: svc.get_dashboard_page_summary('air', ''))
+        if summary:
+            context['sensor_count'] = summary.get('sensor_count')
+            context['measurement_count'] = summary.get('measurement_count')
+            context['last_update'] = _summary_timestamp(summary, 'last_update')
+            context['preload_anomaly_count'] = summary.get('anomaly_count', 0)
+        else:
+            context['sensor_count'] = PollutionSensor.objects.count()
+            context['measurement_count'] = PollutionMeasurement.objects.count()
+            context['last_update'] = _last_update(PollutionMeasurement)
+            daily_means = _safe(lambda: {
+                row['pollutant']: row['avg_val']
+                for row in PollutionMeasurement.objects
+                .values('pollutant')
+                .annotate(avg_val=Avg('value'))
+            }, {})
+            anomaly_filter = Q()
+            for poll, mean in (daily_means or {}).items():
+                if mean and mean > 0:
+                    anomaly_filter |= Q(pollutant=poll, value__gt=2 * mean)
+            context['preload_anomaly_count'] = _safe(
+                lambda: PollutionMeasurement.objects.filter(anomaly_filter).count() if anomaly_filter else 0, 0
+            )
 
         # --- Pre-load: dépassements OMS agrégés nationaux ---
         context['preload_who'] = _jsonable(_safe(lambda: svc.get_who_exceedance_days('')))
@@ -399,9 +425,15 @@ class MobilityPageView(TemplateView):
         if isinstance(cached, dict):
             return {**context, **cached}
 
-        context['network_count'] = BikeNetwork.objects.count()
-        context['snapshot_count'] = BikeSnapshot.objects.count()
-        context['last_update'] = _last_update(BikeSnapshot)
+        summary = _safe(lambda: svc.get_dashboard_page_summary('mobility', ''))
+        if summary:
+            context['network_count'] = summary.get('network_count')
+            context['snapshot_count'] = summary.get('snapshot_count')
+            context['last_update'] = _summary_timestamp(summary, 'last_update')
+        else:
+            context['network_count'] = BikeNetwork.objects.count()
+            context['snapshot_count'] = BikeSnapshot.objects.count()
+            context['last_update'] = _last_update(BikeSnapshot)
 
         # --- Pre-load: agrégat national hourly bike usage ---
         context['preload_mob_hourly'] = _jsonable(
@@ -446,9 +478,15 @@ class CrossAnalysisPageView(TemplateView):
         if isinstance(cached, dict):
             return {**context, **cached}
 
-        context['meteo_count'] = WeatherObservation.objects.count()
-        context['pollution_count'] = PollutionMeasurement.objects.count()
-        context['mobility_count'] = BikeSnapshot.objects.count()
+        summary = _safe(lambda: svc.get_dashboard_page_summary('cross', ''))
+        if summary:
+            context['meteo_count'] = summary.get('meteo_count')
+            context['pollution_count'] = summary.get('pollution_count')
+            context['mobility_count'] = summary.get('mobility_count')
+        else:
+            context['meteo_count'] = WeatherObservation.objects.count()
+            context['pollution_count'] = PollutionMeasurement.objects.count()
+            context['mobility_count'] = BikeSnapshot.objects.count()
         to_cache = {
             'meteo_count': context.get('meteo_count'),
             'pollution_count': context.get('pollution_count'),

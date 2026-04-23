@@ -26,6 +26,7 @@ from apps.utils.lake import upload_to_lake
 
 from . import models
 from .constants import GOLD_NATIONAL_CITY_KEY
+from .dashboard_summaries import publish_dashboard_page_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +36,27 @@ def _analytics_bucket() -> str:
 
 
 def _distinct_city_keys() -> list[str]:
-    from apps.meteo.models import WeatherStation
-    from apps.mobility.models import BikeNetwork
-    from apps.pollution.models import PollutionSensor
+    from django.apps import apps
+
+    WeatherStation = apps.get_model('meteo', 'WeatherStation')
+    BikeNetwork = apps.get_model('mobility', 'BikeNetwork')
+    PollutionSensor = apps.get_model('pollution', 'PollutionSensor')
 
     s: set[str] = set()
-    for qs in (
-        BikeNetwork.objects.exclude(city='').values_list('city', flat=True),
-        PollutionSensor.objects.exclude(city='').values_list('city', flat=True),
-        WeatherStation.objects.exclude(city='').values_list('city', flat=True),
-    ):
-        for c in qs:
-            if c and str(c).strip():
-                s.add(str(c).strip())
+    # On récupère les villes distinctes de chaque domaine pour construire la liste de filtres du dashboard.
+    for model in (BikeNetwork, PollutionSensor, WeatherStation):
+        try:
+            cities = (
+                model.objects.exclude(city='')
+                .values_list('city', flat=True)
+                .distinct()
+            )
+            for c in cities:
+                if c and str(c).strip():
+                    s.add(str(c).strip())
+        except Exception as exc:
+            logger.error('Error fetching cities for %s: %s', model.__name__, exc)
+
     return sorted(s)
 
 
@@ -353,7 +362,7 @@ def publish_gold_climate():
     end = date.today().isoformat()
     temp_frames = []
     for city in cities:
-        ck = Q._city_key(city)
+        ck = Q._gold_city_key(city)
         dft = Q._orm_temperature_series(city, start, end)
         if not dft.empty:
             t = dft.copy()
@@ -438,7 +447,7 @@ def publish_gold_climate():
                 update_fields=['temp', 'as_of'],
             )
     for city in cities:
-        ck = Q._city_key(city)
+        ck = Q._gold_city_key(city)
         raw = Q._orm_meteo_visibility_corr(ck)
         if raw.empty:
             continue
@@ -464,12 +473,27 @@ def publish_gold_climate():
     return {'cities': len(cities)}
 
 
+@shared_task(name='apps.serving.tasks.publish_gold_dashboard_summaries')
+def publish_gold_dashboard_summaries():
+    as_of = timezone.now()
+    result = publish_dashboard_page_summaries(as_of=as_of)
+    logger.info(
+        'gold_publish dashboard_summaries pages=%d cities=%d rows=%d as_of=%s',
+        result['pages'],
+        result['cities'],
+        result['rows'],
+        as_of,
+    )
+    return result
+
+
 @shared_task(name='apps.serving.tasks.publish_gold_all')
 def publish_gold_all():
-    """Chaîne Celery : mobilité puis air puis climat."""
+    """Chaîne Celery : mobilité puis air puis climat puis résumés dashboard."""
     chain(
         publish_gold_mobility.s(),
         publish_gold_air.s(),
         publish_gold_climate.s(),
+        publish_gold_dashboard_summaries.s(),
     ).apply_async()
     return {'queued': True}

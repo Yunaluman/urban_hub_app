@@ -47,7 +47,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ meteo_count|default:"—" }}</div>
+      <div class="kpi-val" id="cross_kpi_meteo_count">{{ meteo_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
   </div>
@@ -61,7 +61,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ pollution_count|default:"—" }}</div>
+      <div class="kpi-val" id="cross_kpi_pollution_count">{{ pollution_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
   </div>
@@ -75,7 +75,7 @@
           <i class="bi bi-info-circle"></i>
         </button>
       </div>
-      <div class="kpi-val">{{ mobility_count|default:"—" }}</div>
+      <div class="kpi-val" id="cross_kpi_mobility_count">{{ mobility_count|default:"—" }}</div>
       <div class="kpi-sub">enregistrements disponibles</div>
     </div>
   </div>
@@ -228,6 +228,10 @@ function corrClass(v) {
   return 'corr-neu';
 }
 
+function cityLabel(city) {
+  return city === '__all__' ? 'Toutes les villes' : city;
+}
+
 async function loadCities() {
   try {
     const r = await fetch('/api/dashboard/cities/');
@@ -241,6 +245,20 @@ async function loadCities() {
       sel.appendChild(o);
     });
   } catch {}
+}
+
+async function refreshSummary(city) {
+  const cityParam = city === '__all__' ? '__all__' : city;
+  try {
+    const r = await fetch(`/api/dashboard/summary/cross/?city=${encodeURIComponent(cityParam)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json();
+    document.getElementById('cross_kpi_meteo_count').textContent = s.meteo_count ?? '—';
+    document.getElementById('cross_kpi_pollution_count').textContent = s.pollution_count ?? '—';
+    document.getElementById('cross_kpi_mobility_count').textContent = s.mobility_count ?? '—';
+  } catch (_) {
+    // Keep server-rendered fallback values.
+  }
 }
 
 function buildInsights(merged, corr) {
@@ -273,6 +291,7 @@ function buildInsights(merged, corr) {
 
 async function refresh() {
   const city = document.getElementById('cross_city').value;
+  refreshSummary(city);
   ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(spinner);
 
   try {
@@ -284,7 +303,7 @@ async function refresh() {
     if (!merged.length) {
       const cityLabel = city === '__all__' ? 'Toutes les villes' : city;
       ['chart_corr','chart_timeline','chart_bikes','chart_sc1','chart_sc2'].forEach(id =>
-        noData(id, `Données insuffisantes pour ${cityLabel}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
+        noData(id, `Données insuffisantes pour ${cityLabel(city)}. Les jeux de données météo, pollution et mobilité doivent se chevaucher.`)
       );
       document.getElementById('insights_panel').style.display = 'none';
       return;
@@ -308,7 +327,7 @@ async function refresh() {
         hovertemplate:'%{x} / %{y}<br><b>r = %{z:.3f}</b><extra></extra>',
       }], { ...LAYOUT, xaxis:{ ...LAYOUT.xaxis, side:'bottom' }, yaxis:{ ...LAYOUT.yaxis, autorange:'reversed' }, margin:{ l:80, r:70, t:30, b:80 } }, CFG);
     } else {
-      noData('chart_corr', 'Matrice de corrélation non disponible.');
+      noData('chart_corr', `Matrice non disponible: ${merged.length} jour(s) croisés, minimum 6 requis avec au moins 2 variables numériques exploitables.`);
     }
 
     // Timeline
