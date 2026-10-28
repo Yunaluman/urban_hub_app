@@ -1,42 +1,44 @@
-# UrbanHub — Jumeau Numérique Urbain
+# UrbanHub — Urban Digital Twin
 
-Plateforme d'analyse territoriale pour la prise de décision publique (Smart City).  
-Données météo, pollution, mobilité douce — croisées pour produire des indicateurs d'aide à la gouvernance.
+**English** · [Français](README.fr.md)
+
+A territorial analytics platform for public decision-making (Smart City).
+Weather, pollution and soft-mobility data — cross-referenced to produce governance indicators.
 
 ---
 
-## Prérequis
+## Requirements
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (v24+)
-- [Anaconda](https://www.anaconda.com/download) ou Miniconda (pour l'interface Django locale)
+- [Anaconda](https://www.anaconda.com/download) or Miniconda (for the local Django UI)
 
 ---
 
-## Démarrage rapide
+## Quick start
 
 ```bash
-# 1. Variables d'environnement
+# 1. Environment variables
 cp .env.example .env
-# Éditer .env : POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, SECRET_KEY
+# Edit .env: POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, SECRET_KEY
 
-# 2. Infrastructure Docker (postgres, redis, minio, celery, migrations automatiques)
+# 2. Docker infrastructure (postgres, redis, minio, celery, automatic migrations)
 docker compose up -d --remove-orphans
-docker compose ps   # attendre que tous les services soient healthy
+docker compose ps   # wait until every service is healthy
 
-# 3. Environnement conda (une seule fois)
+# 3. Conda environment (once)
 conda env create -f environment.yml
 conda activate urbanhub
 pip install -r requirements.txt
 
-# 4. Lancer Django
+# 4. Run Django
 python manage.py runserver 127.0.0.1:8000
 ```
 
-Tableau de bord : **http://127.0.0.1:8000**
+Dashboard: **http://127.0.0.1:8000**
 
-> Les migrations sont exécutées **automatiquement** par le service `migrate` au démarrage de Docker.  
-> La collecte et la publication analytique sont gérées **automatiquement** par Celery Beat
-> (Open-Meteo, NOAA GSOD, CityBikes, OpenAQ, EEA, analyses croisées, couches Gold).
+> Migrations run **automatically** through the `migrate` service when Docker starts.
+> Collection and analytics publishing are handled **automatically** by Celery Beat
+> (Open-Meteo, NOAA GSOD, CityBikes, OpenAQ, EEA, cross analyses, Gold layers).
 
 ---
 
@@ -48,143 +50,143 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `POSTGRES_PASSWORD` | Mot de passe PostgreSQL |
-| `MINIO_ROOT_PASSWORD` | Mot de passe MinIO (min. 8 car.) |
-| `SECRET_KEY` | Clé secrète Django (longue chaîne aléatoire) |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `MINIO_ROOT_PASSWORD` | MinIO password (min. 8 chars) |
+| `SECRET_KEY` | Django secret key (long random string) |
 
-Les valeurs par défaut pointent vers `127.0.0.1` + ports Docker mappés sur l'hôte.  
-Les services Celery reçoivent les noms de services Docker (`postgres`, `redis`, `minio`) via les blocs `environment:` de `docker-compose.yml`.
+Defaults point to `127.0.0.1` + Docker ports mapped on the host.
+Celery services receive the Docker service names (`postgres`, `redis`, `minio`) through the `environment:` blocks of `docker-compose.yml`.
 
 ---
 
-## 2. Infrastructure Docker
+## 2. Docker infrastructure
 
 ```bash
 docker compose up -d
 docker compose ps
 ```
 
-| Service | Rôle | Port hôte |
+| Service | Role | Host port |
 |---------|------|-----------|
-| `postgres` | Base time-series (TimescaleDB) | **5432** |
-| `redis` | Broker Celery + cache Django | 6379 |
-| `minio` | Data Lake S3 (API / console) | 9000 / **9001** |
-| `migrate` | Migrations Django (one-shot) | — |
-| `celery-worker-bronze` | Collecte externe + orchestration | — |
-| `celery-worker-silver` | Normalisation / Parquet Silver | — |
-| `celery-worker-postgres` | Upserts PostgreSQL / batch lourds | — |
-| `celery-worker-gold` | Publications Gold dashboard | — |
-| `celery-worker-analysis` | Analyses croisées | — |
-| `celery-beat` | Planificateur des collectes, analyses et publications Gold | — |
-| `flower` | Monitoring Celery | **5555** |
-| `pgweb` | Interface légère PostgreSQL | **8081** |
-| `jupyter` | Notebooks / exploration data | **8888** |
+| `postgres` | Time-series database (TimescaleDB) | **5432** |
+| `redis` | Celery broker + Django cache | 6379 |
+| `minio` | S3 data lake (API / console) | 9000 / **9001** |
+| `migrate` | Django migrations (one-shot) | — |
+| `celery-worker-bronze` | External collection + orchestration | — |
+| `celery-worker-silver` | Normalization / Silver Parquet | — |
+| `celery-worker-postgres` | PostgreSQL upserts / heavy batches | — |
+| `celery-worker-gold` | Gold dashboard publications | — |
+| `celery-worker-analysis` | Cross analyses | — |
+| `celery-beat` | Scheduler for collection, analyses and Gold publications | — |
+| `flower` | Celery monitoring | **5555** |
+| `pgweb` | Lightweight PostgreSQL UI | **8081** |
+| `jupyter` | Notebooks / data exploration | **8888** |
 
-**Django** (UI + API REST) tourne sur la machine hôte, pas dans Docker.
+**Django** (UI + REST API) runs on the host machine, not in Docker.
 
-> **Windows — conflit port 5432** : si un PostgreSQL local est installé, il occupe souvent ce port.  
-> Solutions : (1) arrêter le service Windows `postgresql-x64-*` ; (2) remapper dans `docker-compose.yml` (`"5433:5432"`) et mettre `POSTGRES_PORT=5433` dans `.env`.
+> **Windows — port 5432 conflict**: a locally installed PostgreSQL often holds this port.
+> Fixes: (1) stop the Windows service `postgresql-x64-*`; (2) remap in `docker-compose.yml` (`"5433:5432"`) and set `POSTGRES_PORT=5433` in `.env`.
 
 ---
 
-## 3. Environnement Python local
+## 3. Local Python environment
 
 ```bash
-conda env create -f environment.yml   # une seule fois
+conda env create -f environment.yml   # once
 conda activate urbanhub
 pip install -r requirements.txt
 ```
 
-> `environment.yml` inclut les outils data science (PySpark, scikit-learn, geopandas) pour les notebooks.  
-> `requirements.txt` contient les dépendances Django / Celery pour l'application.
+> `environment.yml` includes data-science tools (PySpark, scikit-learn, geopandas) for the notebooks.
+> `requirements.txt` holds the Django / Celery dependencies for the app.
 
-**Git Bash — `Run 'conda init' before 'conda activate'`** :
+**Git Bash — `Run 'conda init' before 'conda activate'`**:
 
 ```bash
-# Option A — PowerShell ou Anaconda Prompt (recommandé sous Windows)
-conda init powershell   # une seule fois, puis rouvrir
+# Option A — PowerShell or Anaconda Prompt (recommended on Windows)
+conda init powershell   # once, then reopen
 
-# Option B — Git Bash, à chaque session
+# Option B — Git Bash, every session
 eval "$(conda shell.bash hook)"
 conda activate urbanhub
 ```
 
-**Windows — `UnicodeDecodeError` à la connexion Postgres** :
+**Windows — `UnicodeDecodeError` when connecting to Postgres**:
 
-Le projet utilise `psycopg` v3 (`psycopg[binary]`) qui règle en pratique ce bug. Si l'erreur persiste :
+The project uses `psycopg` v3 (`psycopg[binary]`), which fixes this bug in practice. If the error persists:
 
-1. `pip uninstall psycopg2-binary` (si présent)
+1. `pip uninstall psycopg2-binary` (if present)
 2. `pip install -r requirements.txt`
-3. Vérifier que `.env` est enregistré en **UTF-8** (pas ANSI / Windows-1252)
-4. Vérifier `PGCLIENTENCODING=UTF8` dans `.env`
+3. Make sure `.env` is saved as **UTF-8** (not ANSI / Windows-1252)
+4. Make sure `PGCLIENTENCODING=UTF8` is in `.env`
 
 ---
 
-## 4. Collecte et publications automatiques
+## 4. Automatic collection and publishing
 
-La collecte est entièrement gérée par **Celery Beat** dès que Docker est lancé.
-Le pipeline couvre l'ingestion, l'analyse croisée et la publication de jeux de données
-agrégés "Gold" pour le dashboard.
+Collection is fully handled by **Celery Beat** as soon as Docker is up.
+The pipeline covers ingestion, cross analysis and publication of aggregated
+"Gold" datasets for the dashboard.
 
-Les workers Celery sont maintenant **spécialisés par charge** :
-`bronze` pour la collecte réseau, `silver` pour la normalisation, `ingestion_postgres`
-pour les écritures DB lourdes, `gold` pour les agrégats dashboard et `analysis`
-pour les corrélations croisées.
+Celery workers are **specialized by workload**:
+`bronze` for network collection, `silver` for normalization, `ingestion_postgres`
+for heavy DB writes, `gold` for dashboard aggregates and `analysis`
+for cross correlations.
 
-| Tâche | Source | Fréquence |
+| Task | Source | Frequency |
 |-------|--------|-----------|
-| `fetch_openmeteo_live` | Open-Meteo (10 villes FR, 48 h glissantes) | Toutes les heures |
-| `fetch_noaa_gsod` | NOAA GSOD (historique journalier, 15 stations FR) | Tous les jours à 03:00 |
-| `collect_citybikes` | CityBikes API (réseaux FR) | Toutes les 5 minutes |
-| `collect_openaq` | OpenAQ v3 (PM2.5, PM10, NO2, O3, CO, SO2) | Toutes les 5 minutes |
-| `fetch_eea_historical` | EEA Air Quality Download Service | Tous les jours à 04:15 |
-| `run_cross_analysis` | Corrélation météo × pollution × mobilité | Toutes les heures à :30 |
-| `publish_gold_mobility` | Agrégats mobilité pour dashboard | Toutes les 10 minutes |
-| `publish_gold_air` | Agrégats pollution pour dashboard | Toutes les heures à :20 |
-| `publish_gold_climate` | Agrégats climat pour dashboard | Toutes les heures à :25 |
+| `fetch_openmeteo_live` | Open-Meteo (10 French cities, rolling 48 h) | Every hour |
+| `fetch_noaa_gsod` | NOAA GSOD (daily history, 15 French stations) | Daily at 03:00 |
+| `collect_citybikes` | CityBikes API (French networks) | Every 5 minutes |
+| `collect_openaq` | OpenAQ v3 (PM2.5, PM10, NO2, O3, CO, SO2) | Every 5 minutes |
+| `fetch_eea_historical` | EEA Air Quality Download Service | Daily at 04:15 |
+| `run_cross_analysis` | Weather × pollution × mobility correlation | Every hour at :30 |
+| `publish_gold_mobility` | Mobility aggregates for the dashboard | Every 10 minutes |
+| `publish_gold_air` | Pollution aggregates for the dashboard | Every hour at :20 |
+| `publish_gold_climate` | Climate aggregates for the dashboard | Every hour at :25 |
 
-Surveiller l'exécution des tâches sur **Flower** : http://localhost:5555
+Monitor task execution in **Flower**: http://localhost:5555
 
-Comparer les tâches les plus coûteuses observées :
+Compare the most expensive tasks observed:
 `python manage.py task_resource_report --days 7 --limit 10`
 
 ---
 
-## 5. Dashboard territorial (Django)
+## 5. Territorial dashboard (Django)
 
-Servi par Django (templates Bootstrap + Plotly.js), API JSON sous `/api/dashboard/...`.
+Served by Django (Bootstrap templates + Plotly.js), JSON API under `/api/dashboard/...`.
 
-### Comportement UI
+### UI behavior
 
-- Les vues dashboard démarrent par défaut sur **`Toutes les villes`** (`__all__`), c’est-à-dire l’agrégat national quand les tables Gold sont disponibles.
-- Le filtre ville permet ensuite de basculer sur un territoire précis sans changer la structure des graphiques.
-- Les explications sont désormais **locales à chaque carte / graphique** via l’icône `i` (tooltip), et non plus dans un panneau global.
-- L’analyse croisée peut aussi fonctionner sur l’agrégat national si les séries météo, pollution et mobilité se recouvrent suffisamment.
+- Dashboard views start on **`All cities`** (`__all__`) by default, i.e. the national aggregate when Gold tables are available.
+- The city filter then switches to a specific territory without changing the chart layout.
+- Explanations are **local to each card / chart** through the `i` icon (tooltip), not in a global panel.
+- Cross analysis also works on the national aggregate when weather, pollution and mobility series overlap enough.
 
 | Module | URL |
 |--------|-----|
-| Vue d'ensemble | http://127.0.0.1:8000 |
-| Climatologie | http://127.0.0.1:8000/dashboard/climate/ |
-| Air & santé | http://127.0.0.1:8000/dashboard/air/ |
-| Mobilité | http://127.0.0.1:8000/dashboard/mobility/ |
-| Analyse croisée | http://127.0.0.1:8000/dashboard/cross/ |
-| Admin Django | http://127.0.0.1:8000/admin/ |
-| API dashboard | http://127.0.0.1:8000/api/dashboard/ |
-| API métier | http://127.0.0.1:8000/api/meteo/ |
-| API métier | http://127.0.0.1:8000/api/mobility/ |
-| API métier | http://127.0.0.1:8000/api/pollution/ |
-| API analyse | http://127.0.0.1:8000/api/analysis/ |
+| Overview | http://127.0.0.1:8000 |
+| Climatology | http://127.0.0.1:8000/dashboard/climate/ |
+| Air & health | http://127.0.0.1:8000/dashboard/air/ |
+| Mobility | http://127.0.0.1:8000/dashboard/mobility/ |
+| Cross analysis | http://127.0.0.1:8000/dashboard/cross/ |
+| Django admin | http://127.0.0.1:8000/admin/ |
+| Dashboard API | http://127.0.0.1:8000/api/dashboard/ |
+| Domain API | http://127.0.0.1:8000/api/meteo/ |
+| Domain API | http://127.0.0.1:8000/api/mobility/ |
+| Domain API | http://127.0.0.1:8000/api/pollution/ |
+| Analysis API | http://127.0.0.1:8000/api/analysis/ |
 
 ---
 
-## Accès aux services
+## Service access
 
 | Interface | URL |
 |-----------|-----|
 | UrbanHub (Django) | http://127.0.0.1:8000 |
 | MinIO Console | http://localhost:9001 |
-| Flower (monitoring Celery) | http://localhost:5555 |
-| pgweb (browser PostgreSQL) | http://localhost:8081 |
+| Flower (Celery monitoring) | http://localhost:5555 |
+| pgweb (PostgreSQL browser) | http://localhost:8081 |
 | Jupyter Lab | http://localhost:8888 |
 | PostgreSQL / TimescaleDB | localhost:5432 |
 
@@ -193,52 +195,52 @@ Servi par Django (templates Bootstrap + Plotly.js), API JSON sous `/api/dashboar
 ## Architecture
 
 ```
-Sources de données
-  ├── Open-Meteo  (météo live, 10 villes FR)
-  ├── NOAA GSOD   (météo historique journalière)
-  ├── CityBikes   (réseaux vélos FR, temps réel)
-  ├── OpenAQ      (capteurs pollution temps réel)
-  └── EEA         (pollution historisée / vérifiée)
+Data sources
+  ├── Open-Meteo  (live weather, 10 French cities)
+  ├── NOAA GSOD   (daily weather history)
+  ├── CityBikes   (French bike networks, real time)
+  ├── OpenAQ      (real-time pollution sensors)
+  └── EEA         (historical / validated pollution)
           │
           ▼
   Celery Beat + Workers  [Docker]
-    ├── bronze               → collecte API / archives MinIO raw
-    ├── silver               → normalisation / Parquet MinIO processed
+    ├── bronze               → API collection / raw MinIO archives
+    ├── silver               → normalization / processed MinIO Parquet
     ├── ingestion_postgres   → WeatherObservation / BikeSnapshot / PollutionMeasurement
     ├── run_cross_analysis   → CrossAnalysisResult (DB) + MinIO analytics
-    └── publish_gold_*       → tables Gold Postgres + Parquet Gold MinIO
+    └── publish_gold_*       → Gold Postgres tables + Gold MinIO Parquet
           │
-          ├── TimescaleDB (séries temporelles)
-          └── MinIO (Data Lake — raw / processed / analytics)
+          ├── TimescaleDB (time series)
+          └── MinIO (data lake — raw / processed / analytics)
                     │
-          Django  [machine hôte :8000]
+          Django  [host machine :8000]
             ├── ORM → PostgreSQL
-            ├── API REST (DRF)
+            ├── REST API (DRF)
             ├── Dashboard (templates + Plotly.js)
-            └── Urban Guide (API de recommandation)
+            └── Urban Guide (recommendation API)
 ```
 
-### Couches de données
+### Data layers
 
-| Couche | Support | Contenu |
-|--------|---------|---------|
-| `raw` / bronze | MinIO | snapshots bruts des APIs externes |
-| `processed` / silver | MinIO | données nettoyées / normalisées |
-| `ingestion_postgres` / OLTP | PostgreSQL | tables métier Django (`WeatherObservation`, `BikeSnapshot`, `PollutionMeasurement`, etc.) |
-| `gold` | PostgreSQL + MinIO analytics | agrégats servis rapidement au dashboard |
+| Layer | Storage | Content |
+|---------|---------|---------|
+| `raw` / bronze | MinIO | raw snapshots of external APIs |
+| `processed` / silver | MinIO | cleaned / normalized data |
+| `ingestion_postgres` / OLTP | PostgreSQL | Django domain tables (`WeatherObservation`, `BikeSnapshot`, `PollutionMeasurement`, etc.) |
+| `gold` | PostgreSQL + MinIO analytics | aggregates served fast to the dashboard |
 
-Les endpoints dashboard peuvent lire soit les tables métier ORM, soit les tables Gold
-selon les flags `DASHBOARD_GOLD_MOBILITY`, `DASHBOARD_GOLD_AIR` et `DASHBOARD_GOLD_CLIMATE`
-dans `.env`.
+Dashboard endpoints read either the ORM domain tables or the Gold tables
+depending on the `DASHBOARD_GOLD_MOBILITY`, `DASHBOARD_GOLD_AIR` and `DASHBOARD_GOLD_CLIMATE`
+flags in `.env`.
 
-En pratique, l’expérience UI cible est :
+The target UI experience is:
 
-- arrivée sur l’agrégat **Gold national** ;
-- lecture rapide via KPI + graphiques ;
-- zoom local via le filtre ville ;
-- aide ponctuelle via les tooltips `i`.
+- land on the **national Gold** aggregate;
+- quick read through KPIs + charts;
+- zoom in locally with the city filter;
+- on-demand help through the `i` tooltips.
 
-### Relance après refacto
+### Restart after a refactor
 
 ```bash
 docker compose down
@@ -247,7 +249,7 @@ python manage.py migrate
 python manage.py runserver 127.0.0.1:8000
 ```
 
-Vérifications utiles :
+Useful checks:
 
 - `docker compose ps`
 - `python manage.py check`
@@ -255,64 +257,64 @@ Vérifications utiles :
 
 ---
 
-## Structure du projet
+## Project structure
 
 ```
 urban_hub_app/
-├── manage.py               ← point d'entrée Django
-├── Dockerfile              ← image Celery + Django
-├── requirements.txt        ← dépendances Python
-├── docker-compose.yml      ← infrastructure complète
+├── manage.py               ← Django entry point
+├── Dockerfile              ← Celery + Django image
+├── requirements.txt        ← Python dependencies
+├── docker-compose.yml      ← full infrastructure
 ├── .dockerignore
-├── .env.example            ← modèle + commentaires Windows
-├── environment.yml         ← env conda (data science local)
-├── notebooks/              ← notebooks Jupyter d'exploration / analyse
-├── scripts/                ← scripts utilitaires (ex. ingestion)
-├── urbanhub/               ← configuration Django
+├── .env.example            ← template + Windows notes
+├── environment.yml         ← conda env (local data science)
+├── notebooks/              ← Jupyter exploration / analysis notebooks
+├── scripts/                ← utility scripts (e.g. ingestion)
+├── urbanhub/               ← Django configuration
 │   ├── settings.py
-│   ├── celery.py           ← schedules Celery Beat
+│   ├── celery.py           ← Celery Beat schedules
 │   └── urls.py
 ├── apps/
 │   ├── dashboard/          ← UI (templates) + /api/dashboard/*
-│   ├── meteo/              ← modèles, tâches Open-Meteo + NOAA, API
-│   ├── mobility/           ← modèles, tâches CityBikes, API
-│   ├── pollution/          ← modèles, tâches OpenAQ + EEA, API
-│   ├── analysis/           ← corrélations croisées, API
-│   ├── serving/            ← publication Gold Postgres + MinIO
-│   ├── urban_guide/        ← module exploratoire en pause
+│   ├── meteo/              ← models, Open-Meteo + NOAA tasks, API
+│   ├── mobility/           ← models, CityBikes tasks, API
+│   ├── pollution/          ← models, OpenAQ + EEA tasks, API
+│   ├── analysis/           ← cross correlations, API
+│   ├── serving/            ← Gold publishing to Postgres + MinIO
+│   ├── urban_guide/        ← exploratory module, on hold
 │   └── utils/
-│       ├── lake.py         ← client MinIO / Data Lake
-│       └── lake_readers.py ← lecture des derniers Parquet du lake
-└── templates/dashboard/    ← templates HTML
+│       ├── lake.py         ← MinIO / data lake client
+│       └── lake_readers.py ← reads the latest lake Parquet files
+└── templates/dashboard/    ← HTML templates
 ```
 
 ---
 
-## Arrêter l'infrastructure
+## Stopping the infrastructure
 
 ```bash
 docker compose down
 ```
 
-Sans `-v`, les volumes (Postgres, MinIO) sont **conservés**. Relancer : `docker compose up -d`.
+Without `-v`, volumes (Postgres, MinIO) are **kept**. Restart: `docker compose up -d`.
 
 ---
 
-## Remise à plat (réinitialiser complètement)
+## Full reset
 
 ```bash
-# 1. Supprimer conteneurs + volumes (efface toutes les données)
+# 1. Remove containers + volumes (erases all data)
 docker compose down -v
 
-# 2. Relancer l'infra (migrations auto incluses)
+# 2. Restart the infrastructure (automatic migrations included)
 docker compose up -d --remove-orphans
 
-# 3. Lancer Django (env conda activé)
+# 3. Run Django (conda env activated)
 conda activate urbanhub
 python manage.py runserver 127.0.0.1:8000
 ```
 
-**Rebuild d'images** (après modification de `requirements.txt` ou `Dockerfile`) :
+**Image rebuild** (after changing `requirements.txt` or `Dockerfile`):
 
 ```bash
 docker compose build --no-cache
